@@ -34,6 +34,6 @@ public class TestSet {
 
 
     public enum Type {
-        SINGLE_HOP,SAME_DOC_Multi_HOP
+        SINGLE_HOP,SAME_DOC_Multi_HOP,CROSS_DOC_Multi_HOP
     }
 }

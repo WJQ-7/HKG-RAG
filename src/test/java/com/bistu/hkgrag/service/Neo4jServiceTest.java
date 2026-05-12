@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,8 @@ import static com.bistu.hkgrag.preprocess.utils.TextUtils.readJsonlToTriple;
 @SpringBootTest(classes = com.bistu.hkgrag.HkgRagApplication.class)
 public class Neo4jServiceTest {
     private Neo4jService tripleService;
+    @Autowired
+    private Neo4jService neo4jService;
 
     public Neo4jServiceTest(@Autowired Neo4jService tripleService) {
         this.tripleService = tripleService;
@@ -147,6 +150,24 @@ public class Neo4jServiceTest {
         List<Map<String,Object>> relationList=tripleService.findFileById(Id);
         System.out.println(relationList);
         Assertions.assertNotNull(relationList);
+    }
+
+    /**
+     * 根据节点label找节点
+     */
+    @Test
+    public void test_findFileByLabel(){
+        String label="文档";
+        List<Map<String,String>> list=neo4jService.findNodeByLabel(label);
+        System.out.println(list);
+    }
+
+    @Test
+    public void test_findFileByEntitiesId(){
+        List<String> idList= Arrays.asList("d58feff3-b38d-45b3-b239-ccbe8a3625bd", "e06d841f-4902-4aa1-8a80-f62e1c1af1d3");
+        List<Map<String, String>> nodeInfo=neo4jService.findFileByEntitiesId(idList);
+        Assertions.assertNotNull(nodeInfo);
+
     }
 
 

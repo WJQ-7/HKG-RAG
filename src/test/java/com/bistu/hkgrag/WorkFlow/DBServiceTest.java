@@ -1,8 +1,10 @@
 package com.bistu.hkgrag.WorkFlow;
 
 
+import com.bistu.hkgrag.dao.milvus.model.DoCluster;
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
+import com.bistu.hkgrag.dao.milvus.service.ClusterService;
 import com.bistu.hkgrag.dao.milvus.service.EntityService;
 import com.bistu.hkgrag.dao.milvus.service.FileService;
 import com.bistu.hkgrag.dao.neo4j.model.Triple;
@@ -28,15 +30,19 @@ import static com.bistu.hkgrag.preprocess.utils.TextUtils.readJsonlToTriple;
 public class DBServiceTest {
     private EntityService entityService;
     private FileService fileService;
+    private ClusterService clusterService;
     private EmbeddingModel embeddingModel;
     private Neo4jService tripleService;
 
+
     public DBServiceTest(@Autowired EntityService entityService,
                          @Autowired FileService fileService,
+                         @Autowired ClusterService clusterService,
                          @Autowired @Qualifier("qwenEmbeddingModel") EmbeddingModel embeddingModel,
                          @Autowired Neo4jService tripleService) {
         this.entityService = entityService;
         this.fileService = fileService;
+        this.clusterService = clusterService;
         this.embeddingModel = embeddingModel;
         this.tripleService = tripleService;
     }
@@ -306,6 +312,71 @@ public class DBServiceTest {
         }
     }
 
+
+    /**
+     * 向Milvus数据库中插入聚类实体
+     */
+    @Test
+    @Order(3)
+    public void testMilvusClusterService() {
+        String inputPath = "src/main/resources/data/all_entities.jsonl";
+        try{
+            List<Triple> triples = readJsonlToTriple(inputPath);
+
+            Map<String, DoCluster> clusterMap = new HashMap<>();
+            List<DoCluster> clusters = new ArrayList<>();
+            //先创建表
+            clusterService.createClusterCollection();
+            for (Triple triple : triples) {
+                if (!"主题聚类节点".equals(triple.getSubjectType())) {
+                    continue;
+                }
+                String subjectId = triple.getSubjectId();
+                if (!clusterMap.containsKey(subjectId)) {
+                    DoCluster cluster = new DoCluster();
+                    cluster.setClusterId(subjectId);
+                    cluster.setClusterName(triple.getSubject());
+                    cluster.setDescription(triple.getObject());
+                    clusters.add(cluster);
+                    clusterMap.put(subjectId, cluster);
+                }
+            }
+            System.out.println("待插入的聚类节点总数：" + clusterMap.size());
+            int embed_batchSize = 10;
+            for (int i = 0; i < clusters.size(); i += embed_batchSize) {
+                int end = Math.min(i + embed_batchSize, clusters.size());
+                List<float[]> clusterNameVectors = new ArrayList<>();
+                List<float[]> clusterDescriptionVectors = new ArrayList<>();
+
+                List<DoCluster> batchList = clusters.subList(i, end);
+                List<String> clusterNameList = batchList.stream()
+                        .map(DoCluster::getClusterName)
+                        .collect(Collectors.toList());
+                List<String> clusterDescriptionList = batchList.stream()
+                        .map(DoCluster::getDescription)
+                        .collect(Collectors.toList());
+
+                clusterNameVectors.addAll(embeddingModel.embed(clusterNameList));
+                clusterDescriptionVectors.addAll(embeddingModel.embed(clusterDescriptionList));
+                for (int j = 0; j < batchList.size(); j++) {
+                    DoCluster cluster = batchList.get(j);
+                    cluster.setClusterNameVector(clusterNameVectors.get(j));
+                    cluster.setDescriptionVector(clusterDescriptionVectors.get(j));
+                }
+                boolean success = clusterService.insertClusters(batchList);
+                if (success) {
+                    System.out.println("批量插入文件成功：" + batchList.size());
+                } else {
+                    System.err.println("批量插入失败，批次起始下标：" + i + "批次大小：" + batchList.size());
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("向量库中插入聚类实体异常");
+        }
+    }
+
+
     /**
      * 2.图数据库
      */
@@ -361,7 +432,7 @@ public class DBServiceTest {
      * 在neo4j中插入节点
      */
     @Test
-    @Order(3)
+    @Order(4)
     public void test_createFileNode() {
         String inputPath = "src/main/resources/data/all_entities.jsonl";
         processNodeFile(inputPath);
@@ -372,7 +443,7 @@ public class DBServiceTest {
      * 插入关系
      */
     @Test
-    @Order(4)
+    @Order(5)
     public void test_createRelationship() {
 
         String inputFilePath = "src/main/resources/data/all_relations.jsonl";
@@ -388,6 +459,7 @@ public class DBServiceTest {
         List<String> failedIds = new ArrayList<>();
 
         try {
+
             List<Triple> relationList = readJsonlToTriple(inputFilePath);
             totalCount = relationList.size();
             for (Triple triple : relationList) {

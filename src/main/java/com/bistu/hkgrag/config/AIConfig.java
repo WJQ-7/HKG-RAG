@@ -168,7 +168,7 @@ public class AIConfig {
 
         OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
                // .model("text-embedding-v4")
-             //   .model("/home/wjq/qwen3-4b-embedding")
+                //.model("/home/wjq/qwen3-4b-embedding")
                 .model("/home/featurize/work/qwen3-4b-embedding")
                 .build();
         OpenAiEmbeddingModel embeddingModel =

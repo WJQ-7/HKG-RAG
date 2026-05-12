@@ -1,7 +1,9 @@
 package com.bistu.hkgrag.llm.agent;
 
+import com.bistu.hkgrag.dao.milvus.model.DoCluster;
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
+import com.bistu.hkgrag.dao.milvus.service.ClusterService;
 import com.bistu.hkgrag.dao.milvus.service.EntityService;
 import com.bistu.hkgrag.dao.milvus.service.FileService;
 import com.bistu.hkgrag.dao.neo4j.service.Neo4jService;
@@ -16,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class MultiAgent {
@@ -23,13 +26,17 @@ public class MultiAgent {
     private final QuestionAnalysisAgent questionAnalysisAgent;
     private final IntentAgent intentAgent;
     private final EvaluationAgent evaluationAgent;
+
+
+    private final Neo4jService neo4jService;
     private final EntityService entityService;
+    private final FileService fileService;
+    private final ClusterService clusterService;
     private final RerankService rerankService;
     //最大智能体轮数
     private final int MaxRetry = 5;
-    private final Neo4jService neo4jService;
-
-    private final FileService fileService;
+    //重排序模型最大重排个数
+    private final int RerankMaxCount = 20;
     @Value("${HKG-RAG.retrieval.TopK}")
     int topK;
 
@@ -37,8 +44,10 @@ public class MultiAgent {
                       @Acceleration IntentAgent intentAgent,
                       @Autowired EvaluationAgent evaluationAgent,
                       @Autowired EntityService entityService,
-                      @Autowired RerankService rerankService, Neo4jService neo4jService,
-                      @Autowired FileService fileService) {
+                      @Autowired RerankService rerankService,
+                      Neo4jService neo4jService,
+                      @Autowired FileService fileService,
+                      @Autowired ClusterService clusterService) {
         this.questionAnalysisAgent = questionAnalysisAgent;
         this.intentAgent = intentAgent;
         this.evaluationAgent = evaluationAgent;
@@ -46,6 +55,7 @@ public class MultiAgent {
         this.rerankService = rerankService;
         this.neo4jService = neo4jService;
         this.fileService = fileService;
+        this.clusterService = clusterService;
     }
 
     public String MultiAgentWorkflow(String question) {
@@ -98,6 +108,9 @@ public class MultiAgent {
 
                             // 1.在向量数据库中对子问题得关键词进行检索获取相关文档
                             List<DoEntity> vector_retrieval = entityService.hybridSearchEntityList(subQuestion_keywords, topK);
+                            if (vector_retrieval.isEmpty()) {
+                                log.info("对当前子问题的关键词[{}]进行向量检索为空", subQuestion_keywords.toString());
+                            }
                             //2.在知识图谱中根据关键词进行检索
                             List<Map<String, Object>> nodeInfo = new ArrayList<>();
                             List<String> entityIds = new ArrayList<>();
@@ -109,6 +122,9 @@ public class MultiAgent {
                                         .toList();
 
                                 entityIds.addAll(ids);
+                            }
+                            if (entityIds.isEmpty()) {
+                                log.info("对当前子问题的关键词[{}]在知识图谱中检索节点为空", subQuestion_keywords.toString());
                             }
                             // 提取所有实体的 id 列表（核心：一行流提取）
                             List<String> vectorIds = vector_retrieval.stream()
@@ -123,14 +139,97 @@ public class MultiAgent {
                             List<String> documentIds = relatedFiles.stream()
                                     .map(docMap -> docMap.get("id"))  // 从每个文档Map中取 id 字段
                                     .filter(Objects::nonNull)         // 过滤空值
+                                    .distinct()
                                     .toList();
                             //TODO 考虑是否要给子问题检索到的文档进行重排序
+                            /**
+                             * 路线2 通过原问题的关键词匹配获取到的文档
+                             */
+                            //找到的是文件id的全文包含多个分块
                             List<DoFile> milvus_fileList = fileService.getFilesById(documentIds);
-                            RerankResponse.RerankType rerankType= RerankResponse.RerankType.LOCAL;
-                            List<DoFile> rerank_fileList=rerankService.rerank(subQuestion,milvus_fileList,rerankType);
+
+                            /**
+                             * 路线1 用户原问题与文档内容向量匹配
+                             */
+                            List<DoFile> fileList = fileService.vectorSearchByContent(question, topK);
+
+
+                            List<DoFile> rerank_fileList = new ArrayList<>();
+                            for (int i = 0; i < milvus_fileList.size(); i += RerankMaxCount) {
+                                //批量送入rerank模型
+                                int end = Math.min(i + RerankMaxCount, milvus_fileList.size());
+                                List<DoFile> batch = milvus_fileList.subList(i, end);
+                                //批量重排
+                                RerankResponse.RerankType rerankType = RerankResponse.RerankType.LOCAL;
+                                List<DoFile> rerank_batch = rerankService.rerank(subQuestion, batch, rerankType, RerankMaxCount);
+                                rerank_fileList.addAll(rerank_batch);
+                            }
+                            List<DoFile> sortedTopFiles = rerank_fileList.stream()
+                                    .sorted(Comparator.comparing(DoFile::getContentScore).reversed())
+                                    .limit(topK)
+                                    .toList();
+
+                            // 2. 初始化可变列表，先加重排结果
+                            List<DoFile> rerankedFiles = new ArrayList<>();
+                            rerankedFiles.addAll(sortedTopFiles);
+
+                            // 3. 再添加原始文件 + 自动去重（避免重复）
+                            for (DoFile file : fileList) {
+                                if (!rerankedFiles.contains(file)) {
+                                    rerankedFiles.add(file);
+                                }
+                            }
+                            //TODO 考虑是否对两条路线的文档重新进行重排序或者采用打分机制
+                            /**
+                             * 路线3 通过主题聚类获取的文档
+                             */
+                            QuestionAnalysisAgent.QuestionPreRecognitionResult questionPreRecognitionResult =
+                                    questionAnalysisAgent.userQuestionPreRecognition(question);
+                            List<String> relatedTopics = questionPreRecognitionResult.relatedTopics();
+                            //1.在Cluster向量表中进行匹配
+                            List<DoCluster> clusterList = clusterService.batchHybridSearchByNameAndDescription(relatedTopics, topK);
+                            //2.获取id在图谱中找到文件id
+                            List<String> clusterIdList = clusterList.stream().map(DoCluster::getClusterId).distinct().toList();
+                            List<Map<String, String>> topicRelatedFiles = neo4jService.findFileByEntitiesId(clusterIdList);
+                            //提取 所有文档的 id 列表
+                            List<String> topicRelatedDocIds = topicRelatedFiles.stream()
+                                    .map(docMap -> docMap.get("id"))  // 从每个文档Map中取 id 字段
+                                    .filter(Objects::nonNull)         // 过滤空值
+                                    .distinct()
+                                    .toList();
+                            //3.根据文件id在File向量表中找
+                            List<DoFile> topicRelatedFileList = fileService.getFilesById(topicRelatedDocIds);
+                            //TODO 需要过滤通过
+//                            //将路线2和路线3的文档放在一起
+//                            List<DoFile> rerankFiles = new ArrayList<>();
+//                            rerankFiles.addAll(topicRelatedFileList);
+//                            rerankFiles.addAll(milvus_fileList);
+
+                            List<DoFile> rerank_topicFileList = new ArrayList<>();
+                            for (int i = 0; i < topicRelatedFileList.size(); i += RerankMaxCount) {
+                                //批量送入rerank模型
+                                int end = Math.min(i + RerankMaxCount, topicRelatedFileList.size());
+                                List<DoFile> batch = topicRelatedFileList.subList(i, end);
+                                //批量重排
+                                RerankResponse.RerankType rerankType = RerankResponse.RerankType.LOCAL;
+                                List<DoFile> rerank_batch = rerankService.rerank(subQuestion, batch, rerankType, RerankMaxCount);
+                                rerank_topicFileList.addAll(rerank_batch);
+                            }
+                            sortedTopFiles = rerank_topicFileList.stream()
+                                    .sorted(Comparator.comparing(DoFile::getContentScore).reversed())
+                                    .limit(topK)
+                                    .toList();
+
+
+                            rerankedFiles.addAll(sortedTopFiles);
+
+
+
+                           // rerankedFiles.addAll(topicRelatedFileList);
+
                             StringBuilder retrievalInfoSb = new StringBuilder();
-                            for (int i = 0; i < rerank_fileList.size(); i++) {
-                                DoFile doFile = rerank_fileList.get(i);
+                            for (int i = 0; i < rerankedFiles.size(); i++) {
+                                DoFile doFile = rerankedFiles.get(i);
                                 retrievalInfoSb.append("相关文档").append(i + 1).append("：\n")
                                         .append("文档名：").append(doFile.getFileName()).append("\n")
                                         .append("文档内容：").append(doFile.getContent()).append("\n\n");
@@ -153,6 +252,7 @@ public class MultiAgent {
                 /**
                  * 4.将原问题与初始答案给评估智能体进行评估
                  */
+                //TODO 子问题依据太长
                 evaluationResult = evaluationAgent.evaluate(question, initAnswer,stepInfoList.get(stepInfoList.size()-1).getSubAccording());
                 finalAnswer = initAnswer;
                 //模型认为通过

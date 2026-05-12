@@ -31,8 +31,7 @@ public class RerankService {
     public String api_key;
     @Value("${HKG-RAG.rerank.rerankModel}")
     public String rerankModel;
-    @Value("${HKG-RAG.rerank.topK}")
-    public int topK;
+
 
     public RerankService() {
         this.restTemplate = new RestTemplate(new SimpleClientHttpRequestFactory());
@@ -43,7 +42,7 @@ public class RerankService {
      */
     public List<DoFile> rerank(String query,
                                List<DoFile> documents,
-                               RerankResponse.RerankType type) {
+                               RerankResponse.RerankType type,int topK) {
         try {
             // 1. 请求头（和 curl 完全一致）
             HttpHeaders headers = new HttpHeaders();

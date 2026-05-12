@@ -1,6 +1,8 @@
 package com.bistu.hkgrag.llm.service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
+import com.bistu.hkgrag.dao.milvus.service.FileService;
+import com.bistu.hkgrag.dao.neo4j.service.Neo4jService;
 import com.bistu.hkgrag.llm.model.agent.TestSet;
 import com.bistu.hkgrag.llm.model.agent.TestSetListResult;
 import com.bistu.hkgrag.llm.model.agent.TestSetResult;
@@ -28,17 +30,28 @@ public class GenTestSetService {
     private final ObjectMapper objectMapper;
     // 最终输出 100 题：30单跳 + 30同文档两跳 + 40跨文档
     private static final int TOTAL_QUESTIONS = 100;
+    //单跳问题数量
     private static final int SINGLE_HOP = 30;
+    //同文档多跳问题数量
     private static final int SAME_DOC_Multi_HOP = 30;
-    private static final int CROSS_DOC = 40;
+    //跨文档问题数量
+    private static final int CROSS_DOC_Multi_HOP = 40;
 
     // 从500篇里只随机选 20 篇给模型生成问题 ✅
     private static final int SAMPLE_DOC_COUNT = 20;
     private final ChatClient chatClient;
+    private final Neo4jService neo4jService;
+    private final FileService fileService;
 
-    public GenTestSetService(ObjectMapper objectMapper, @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient) {
+    public GenTestSetService(ObjectMapper objectMapper,
+                             @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient,
+                             @Autowired Neo4jService neo4jService,
+                             @Autowired GenClusterService clusterService,
+                             @Autowired FileService fileService) {
         this.objectMapper = objectMapper;
         this.chatClient = chatClient;
+        this.neo4jService = neo4jService;
+        this.fileService = fileService;
     }
 
     public void GenTestSet(String inputPath, String outputPath) {
@@ -52,8 +65,8 @@ public class GenTestSetService {
             List<String> fileIds = new ArrayList<>(fileGroupMap.keySet());
             Collections.shuffle(fileIds);
             Random random = new Random();
-
-            // ========= 1. 单跳 =========
+//
+//            // ========= 1. 单跳 =========
             BeanOutputConverter<TestSetListResult> testSetConverter = new BeanOutputConverter<>(TestSetListResult.class);
             OpenAiChatOptions options = OpenAiChatOptions.builder()
                     .temperature(0.1)
@@ -102,7 +115,7 @@ public class GenTestSetService {
                 List<DoFile> group = fileGroupMap.get(fileId);
                 String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
                 // 多跳提示词
-                String multi_Hop_Prompt = String.format(PromptTemplates.SimpleDoc_MultiHop, group.get(0).getFileName(),fullContent);
+                String multi_Hop_Prompt = String.format(PromptTemplates.Generation_SimpleDoc_MultiHop, group.get(0).getFileName(),fullContent);
                 // 调用大模型生成多跳问答对
                 TestSetListResult multiHopList = chatClient.prompt()
                         .user(multi_Hop_Prompt)
@@ -129,30 +142,106 @@ public class GenTestSetService {
             log.info("总数：{}", singleCount+multiCount);
 
 
-//            // ========= 3. 跨2文档 =========
-//            for (int i = 0; i < 30; i++) {
-//                List<DoFile> pair = pickDocs(docs, docUsage, 2);
-//
-//                generateCross2(pair, testSet);
-//
-//                updateUsage(pair, docUsage);
-//            }
-//
-//            // ========= 4. 跨3文档 =========
-//            for (int i = 0; i < 30; i++) {
-//                List<DoFile> group = pickDocs(docs, docUsage, 3);
-//
-//                generateCross3(group, testSet);
-//
-//                updateUsage(group, docUsage);
-//            }
+//            // ========= 3. 跨文档 =========
+            //1.获取所有聚类节点id
+            List<Map<String, String>> clusterList = neo4jService.findNodeByLabel("主题聚类节点");
+            List<String> idList = new ArrayList<>();
+            for (Map<String, String> map : clusterList) {
+                String id = map.get("id");
+                idList.add(id);
+            }
+            //2.获取所有聚类节点相连的文档节点
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (String id : idList) {
+                List<Map<String, Object>> fileList = neo4jService.findFileById(id);
+                if (fileList.size() > 1) {
+                    // 把关系数据 → 提取出 end（文档节点）
+                    List<Map<String, Object>> docNodeList = new ArrayList<>();
+                    for (Map<String, Object> relationMap : fileList) {
+                        // 从关系里取出 文档节点 end
+                        Map<String, Object> docNode = (Map<String, Object>) relationMap.get("end");
+                        docNodeList.add(docNode);
+                    }
+
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("clusterId", id);
+                    item.put("documentCount", fileList.size());
+                    item.put("documentList", docNodeList); // 这里存纯文档节点！
+                    result.add(item);
+                }
+            }
+            int crossDosCount = 0;
+            for (int i = 0; i < Math.min(CROSS_DOC_Multi_HOP, result.size()); i++) {
+                int randomIndex = random.nextInt(result.size());
+                Map<String, Object> randomCluster = result.remove(randomIndex);
+                // 获取随机id下的所有文档
+                List<Map<String, String>> docList = (List<Map<String, String>>) randomCluster.get("documentList");
+                List<String> fileIdList = new ArrayList<>();
+                if (docList.size() == 2) {
+                    fileIdList.add(docList.get(0).get("id"));
+                    fileIdList.add(docList.get(1).get("id"));
+                }
+                // 如果超过 2 个，再随机取两个不同的
+                else {
+                    int index1 = random.nextInt(docList.size());
+                    int index2 = random.nextInt(docList.size());
+
+                    // 防止重复
+                    while (index1 == index2) {
+                        index2 = random.nextInt(docList.size());
+                    }
+                    fileIdList.add(docList.get(index1).get("id"));
+                    fileIdList.add(docList.get(index2).get("id"));
+                }
+                List<DoFile> fileList = fileService.getFilesById(fileIdList);
+                StringBuilder promptSb = new StringBuilder();
+                for (int j = 0; j < fileList.size(); j++) {
+                    promptSb.append("文档").append(j + 1).append("：")
+                            .append(fileList.get(j).getContent())
+                            .append("\n\n");
+                }
+                String Cross_Dos_Prompt = String.format(PromptTemplates.Generation_CROSS_DOS, promptSb.toString());
+
+                //调用大模型生成多跳问答对
+                TestSetListResult crossDosList = chatClient.prompt()
+                        .user(Cross_Dos_Prompt)
+                        .options(options)
+                        .call()
+                        .entity(TestSetListResult.class);
+
+                for (TestSetResult item : crossDosList.testSetResultList()) {
+                    TestSet testSet = new TestSet();
+                    String fileId = fileList.stream()
+                            .map(DoFile::getFileId)  // 提取 id
+                            .map(String::valueOf) // 转字符串
+                            .collect(Collectors.joining(","));
+                    testSet.setFileId(fileId);
+                    testSet.setQuestion(item.question());
+                    testSet.setAnswer(item.answer());
+                    testSet.setAccording(item.according());
+                    testSet.setType(TestSet.Type.CROSS_DOC_Multi_HOP);
+                    testSets.add(testSet);
+                    crossDosCount++;
+                }
+
+                log.info("多跳进度：{}% ({}/{})", (i + 1) * 100 / CROSS_DOC_Multi_HOP, i + 1, CROSS_DOC_Multi_HOP);
+                TextUtils.printProgress(i + 1, CROSS_DOC_Multi_HOP, "多跳生成进度");
+
+            }
+            log.info("跨文档问题答案对已经生成完成，跨文档问题的个数为：{}", crossDosCount);
+            // log.info("总数：{}", singleCount+multiCount+crossDosCount);
+
+
+            //2.对文档摘要进行聚类
+            //3.随机获取同一聚类下的文档
 
 
             // 写文件
-            TextUtils.writeJsonl(outputPath, testSets);
+             TextUtils.writeJsonl(outputPath, testSets);
 
 
-        } catch (Exception e) {
+        } catch (
+                Exception e) {
             e.printStackTrace();
             log.error("生成测试集失败", e.getMessage());
         }

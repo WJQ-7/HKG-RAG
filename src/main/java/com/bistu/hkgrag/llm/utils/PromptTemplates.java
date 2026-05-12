@@ -572,7 +572,7 @@ public class PromptTemplates {
             ]
             """;
 
-    public static final String SimpleDoc_MultiHop = """
+    public static final String Generation_SimpleDoc_MultiHop = """
             #角色：你是一个高质量问答数据集生成助手，用于构建检索增强生成（RAG）系统的问答测试数据。
             # 任务：请根据给定文档生成1-2条多跳问答对并给出文档中对应的依据。
             # 定义
@@ -594,6 +594,31 @@ public class PromptTemplates {
                     "question": "你的问题",
                     "answer": "答案",
                     "according": "原文依据"
+                }
+            ]
+            """;
+    public static final String Generation_CROSS_DOS= """
+            #角色：你是一个高质量跨文档问答数据集生成助手，用于构建检索增强生成（RAG）系统的跨文档测试数据。
+            # 任务：根据**多篇相关文档**，生成3-4条**跨文档多跳问答对**并给出所有依据。
+            # 定义
+            跨文档多跳问题指：
+                - 答案必须**同时依赖两篇及以上独立文档**才能得出
+                - 需要整合不同文档中的**多个信息点**，进行推理/关联/计算/对比
+                - 不能从任意单篇文档直接找到完整答案
+                - 禁止单文档问题、纯查找类问题
+            # 要求
+                - 问题必须是自然语言提问（像真实用户会问的）
+                - 答案必须严格基于所有文档内容推理，禁止编造
+                - 依据必须**分文档标注**所有用到的原文信息
+            # 输入
+            相关文档内容：%s
+            
+            # 输出格式（严格JSON，不许额外文字）
+            [
+                {
+                    "question": "跨文档问题",
+                    "answer": "跨文档推理答案",
+                    "according": "文档1依据：xxx；文档2依据：xxx"
                 }
             ]
             """;

@@ -39,7 +39,7 @@ public class RerankServiceTest {
 
         int topK = 2;
         RerankResponse.RerankType rerankType = RerankResponse.RerankType.LOCAL;
-        List<DoFile> reranked = rerankService.rerank(query, fileList, rerankType);
+        List<DoFile> reranked = rerankService.rerank(query, fileList, rerankType,3);
         Assertions.assertEquals(reranked.size(), topK);
     }
 }

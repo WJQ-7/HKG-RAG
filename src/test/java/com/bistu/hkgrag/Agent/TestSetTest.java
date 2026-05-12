@@ -32,8 +32,9 @@ public class TestSetTest {
     @Test
     public void test_TestSet() {
 
-        String inputPath = "src/main/resources/data/qa_test_set.jsonl";
-        String outputPath = "src/main/resources/data/result/MultiAgentWorkflow.jsonl";
+        String inputPath = "src/main/resources/data/test_set.jsonl";
+       // String outputPath = "src/main/resources/data/result/baseline.jsonl";
+        String outputPath = "src/main/resources/data/result/MultiAgentWorkflow_test4.jsonl";
         try {
             List<TestSet> testSetList = TextUtils.readJsonlToList(inputPath, TestSet.class);
 
@@ -101,7 +102,7 @@ public class TestSetTest {
             writer.close();
 
             BufferedWriter summaryWriter = new BufferedWriter(
-                    new FileWriter("src/main/resources/data/result/MultiAgentWorkflowResult.txt")
+                    new FileWriter("src/main/resources/data/result/MultiAgentWorkflowResult_test4.txt")
             );
 
             summaryWriter.write("=========== RESULT ===========\n\n");

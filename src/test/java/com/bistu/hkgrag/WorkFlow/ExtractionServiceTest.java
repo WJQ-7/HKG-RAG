@@ -1,6 +1,6 @@
 package com.bistu.hkgrag.WorkFlow;
 
-import com.bistu.hkgrag.llm.service.ClusterService;
+import com.bistu.hkgrag.llm.service.GenClusterService;
 import com.bistu.hkgrag.llm.service.ExtractionService;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -15,11 +15,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class ExtractionServiceTest {
     private ExtractionService extractionService;
-    private ClusterService clusterService;
+    private GenClusterService clusterService;
     private ChatModel chatModel;
 
     public ExtractionServiceTest(@Autowired ExtractionService extractionService,
-                                 @Autowired ClusterService clusterService,
+                                 @Autowired GenClusterService clusterService,
                                  @Autowired @Qualifier("qwen7bInsChatModel") ChatModel chatModel) {
         this.extractionService = extractionService;
         this.clusterService = clusterService;
@@ -56,7 +56,7 @@ public class ExtractionServiceTest {
     @Test
     @Order(3)
     public void test_topicCluster(){
-        String inputPath="src/main/resources/data/chunk_topic_3.jsonl";
+        String inputPath="src/main/resources/data/chunk_topic.jsonl";
         String outputPath="src/main/resources/data";
         clusterService.topicCluster(inputPath, outputPath);
     }

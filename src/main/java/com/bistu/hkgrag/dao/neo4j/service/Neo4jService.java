@@ -120,6 +120,36 @@ public class Neo4jService {
     }
 
     /**
+     * 根据节点类型(label)获取文档
+     * @param label 文档类型
+     * @return
+     */
+    public List<Map<String, String>> findNodeByLabel(String label) {
+        // 1. 简单校验，防止Cypher注入
+        if(label == null || label.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (!label.matches("[\\p{L}0-9_]+")) {
+            throw new IllegalArgumentException("非法label");
+        }
+
+        // 2. 动态拼接label
+        String cypher = String.format("""
+            MATCH (n:`%s`)
+            RETURN properties(n) AS NODE
+            """, label);
+
+        // 3. 查询
+        return neo4jClient.query(cypher)
+                .fetch()
+                .all()
+                .stream()
+                .map(res -> (Map<String, String>) res.get("NODE"))
+                .toList();
+
+    }
+
+    /**
      * 根据id列表获取图片内对应节点及属性
      * @param id 待检索id列表
      * @return
