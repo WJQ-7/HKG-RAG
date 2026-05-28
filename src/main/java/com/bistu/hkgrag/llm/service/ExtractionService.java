@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.converter.BeanOutputConverter;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,13 +30,12 @@ import java.util.stream.Collectors;
 public class ExtractionService {
     private static Logger log = LoggerFactory.getLogger(ExtractionService.class);
     private final ChatClient chatClient;
-    private OpenAiChatModel chatModel;
+
     private final ObjectMapper objectMapper;
 
-    public ExtractionService(@Qualifier("qwen7bInsChatModel") @Autowired OpenAiChatModel chatModel,
-                             @Autowired ObjectMapper objectMapper,
+    public ExtractionService(@Autowired ObjectMapper objectMapper,
                              @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient) {
-        this.chatModel = chatModel;
+
         this.objectMapper = objectMapper;
         this.chatClient = chatClient;
     }

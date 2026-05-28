@@ -18,10 +18,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 @SpringBootTest(classes = com.bistu.hkgrag.HkgRagApplication.class)
 public class MilvusServiceTest {
@@ -179,5 +176,21 @@ public class MilvusServiceTest {
         Assertions.assertEquals(vectorList.size(),topK);
         List<DoEntity>  entities=entityService.hybridSearchEntity(name,topK);
         Assertions.assertEquals(entities.size(),topK);
+    }
+
+    @Test
+    public void test_searchFilesByIds(){
+        List<String> ids = Arrays.asList(
+                "090c05c6-4075-42cd-920b-25ba97f6eae2",
+                "a0b8a7b0-183e-47b3-a24a-e02e91f903db",
+                "3e679d63-8aaf-4111-a6cb-535e0d01a4a9",
+                "451881d7-6339-4d49-878e-b528f6a4c8c4",
+                "43bf7ca3-a0d9-45d3-8f63-83dff89e242a",
+                "2dc8962c-119e-4d39-88e3-6e58e1539179"
+        );
+        String query="2016年健翔桥校区大学英语考试地点变更的原因";
+        int topK=6;
+        List<DoFile> fileList=fileService.searchFilesByIds(query,ids,topK);
+        Assertions.assertNotNull(fileList);
     }
 }

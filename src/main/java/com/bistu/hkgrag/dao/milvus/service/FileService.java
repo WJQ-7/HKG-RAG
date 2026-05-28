@@ -305,6 +305,79 @@ public class FileService {
         }
 
     }
+
+    /**
+     * 根据指定的fileId范围与问题进行向量匹配
+     * @param query 问题
+     * @param fileIds 相关文档的id范围
+     * @param topK
+     * @return 相关文档
+     */
+    public List<DoFile> searchFilesByIds(String query, List<String> fileIds, int topK) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            log.info("待检索 fileIds 为空");
+            return Collections.emptyList();
+        }
+        if (topK < 1) {
+            log.info("通过文档话题进行精确检索的topK小于1");
+            return Collections.emptyList();
+        }
+        try {
+            // 1. query 转 embedding】
+            float[] queryEmbedding = embeddingModel.embed(query);
+            List<Float> vector = IntStream.range(0, queryEmbedding.length)
+                    .mapToObj(i -> queryEmbedding[i])
+                    .collect(Collectors.toList());
+
+            // 2. 拼接 filter
+            String filter = "fileId in [" +
+                    fileIds.stream()
+                            .map(id -> "\"" + id + "\"")
+                            .collect(Collectors.joining(",")) +
+                    "]";
+
+            log.info("Milvus filter: {}", filter);
+
+            // 3. 构造搜索请求
+            SearchReq searchReq = SearchReq.builder()
+                    .collectionName(COLLECTION_NAME)
+                    .annsField("contentVector")
+                    .data(Collections.singletonList(new FloatVec(vector)))
+                    .topK(topK)
+                    .filter(filter)
+                    .metricType(IndexParam.MetricType.COSINE)
+                    .outputFields(List.of("fileId", "chunkId", "fileName", "topic", "content"))
+                    .build();
+
+
+            // 4. 执行向量搜索
+            SearchResp searchResp = client.search(searchReq);
+            List<DoFile> resultList = new ArrayList<>();
+            // 5. 解析结果
+            List<SearchResp.SearchResult> results = searchResp.getSearchResults().get(0);
+            for (SearchResp.SearchResult result : results) {
+                Map<String, Object> map = result.getEntity();
+                Float score = result.getScore();
+                DoFile file = new DoFile();
+                file.setFileId(map.get("fileId").toString());
+                file.setChunkId(map.get("chunkId").toString());
+                file.setFileName(map.get("fileName").toString());
+                file.setTopic(map.get("topic").toString());
+                file.setContent(map.get("content").toString());
+                file.setTopicScore(score);
+                resultList.add(file);
+            }
+            log.info("[{}] 指定 fileId 范围向量检索成功，返回数量：{}",COLLECTION_NAME,resultList.size());
+            return resultList;
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("[{}]表根据id范围进行检索出错", COLLECTION_NAME);
+            return Collections.emptyList();
+        }
+
+    }
+
+
     /**
      * 对文档话题进行精确检索
      *

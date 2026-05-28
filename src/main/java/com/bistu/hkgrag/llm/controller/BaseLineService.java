@@ -2,6 +2,7 @@ package com.bistu.hkgrag.llm.controller;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.dao.milvus.service.FileService;
+import com.bistu.hkgrag.llm.model.agent.RagResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -28,7 +29,7 @@ public class BaseLineService {
         this.chatClient = chatClient;
     }
 
-    public String baselineRAG(String question) {
+    public RagResult baselineRAG(String question) {
         try {
             List<DoFile> fileList = fileService.vectorSearchByContent(question, topK);
             StringBuilder sb = new StringBuilder();
@@ -54,7 +55,10 @@ public class BaseLineService {
                     相关文档：%s
                     """.formatted(question, sb.toString());
             String response = chatClient.prompt(prompt).call().content();
-            return response;
+            RagResult ragResult = new RagResult();
+            ragResult.setAnswer(response);
+            ragResult.setFiles(fileList);
+            return ragResult;
         } catch (Exception e) {
             e.printStackTrace();
             log.error("基线方法回答失败", e);

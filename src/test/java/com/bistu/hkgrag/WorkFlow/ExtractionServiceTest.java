@@ -16,14 +16,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 public class ExtractionServiceTest {
     private ExtractionService extractionService;
     private GenClusterService clusterService;
-    private ChatModel chatModel;
+
 
     public ExtractionServiceTest(@Autowired ExtractionService extractionService,
-                                 @Autowired GenClusterService clusterService,
-                                 @Autowired @Qualifier("qwen7bInsChatModel") ChatModel chatModel) {
+                                 @Autowired GenClusterService clusterService) {
         this.extractionService = extractionService;
         this.clusterService = clusterService;
-        this.chatModel = chatModel;
     }
 
     /**

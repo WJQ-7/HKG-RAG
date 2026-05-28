@@ -19,14 +19,19 @@ public class QuestionAnalysisAgentTest {
 
     @Test
     public void test_userQuestionAnalyse(){
-        String question="哪些人和吴进在同一个组织，并且提交过文档？";
+//        String question="哪些人和吴进在同一个组织，并且提交过文档？";
+//        String suggestion="";
+//        QuestionAnalysisAgent.QuestionAnalysisResult result=agent.userQuestionAnalyse(question,suggestion);
+//        System.out.println(result);
+//        List<String> topics=result.topics();
+//        List<String> subQuestions=result.subQuestions();
+//        System.out.println(topics);
+//        System.out.println(subQuestions);
+//        Assertions.assertNotNull(result);
+        String question="祁忠勇有哪些工作任职经历，最终长期在哪所高校任教？";
         String suggestion="";
-        QuestionAnalysisAgent.QuestionAnalysisResult result=agent.userQuestionAnalyse(question,suggestion);
-        System.out.println(result);
-        List<String> topics=result.topics();
-        List<String> subQuestions=result.subQuestions();
-        System.out.println(topics);
-        System.out.println(subQuestions);
-        Assertions.assertNotNull(result);
+        QuestionAnalysisAgent.RetrievalPlanResponse planResponse=agent.retrievePlan(question,suggestion);
+        System.out.println(planResponse);
+        Assertions.assertNotNull(planResponse);
     }
 }

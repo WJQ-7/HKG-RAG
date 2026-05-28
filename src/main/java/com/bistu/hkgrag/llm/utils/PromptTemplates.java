@@ -513,16 +513,16 @@ public class PromptTemplates {
             
             #输出要求
             严格按照指定 JSON 结构输出，不添加任何多余文字、解释、前言后语；
-            1.pass 为布尔值：true：答案可以回答问题,false：答案不能回答用户问题。
+            1.success 字段值只能是 "PASS" 或 "FAIL"（大写英文）：- "PASS"：答案可以回答问题 - "FAIL"：答案不能回答用户问题；
             2.reason 必须清晰具体，不笼统；
-            3.suggestion 仅在pass=false 时填写，为可执行检索建议；pass=true 时可为 null 或空字符串。
+            3.suggestion 仅在 success="FAIL" 时填写，为可执行检索建议；success="PASS" 时可为 null 或空字符串。
             
             ###############
             示例1：
             用户原始问题：近三年我国新能源汽车销量如何？
             初始答案：2023年我国新能源汽车销量为949.5万辆。
             {
-              "pass": false,
+              "success": "FAIL",
               "reason": "仅提供2023年数据，缺少近三年中其他年份的销量信息，回答不完整",
               "suggestion": "请补充检索近三年完整的新能源汽车销量数据"
             }
@@ -530,7 +530,7 @@ public class PromptTemplates {
             用户原始问题：请介绍人工智能的定义
             初始答案：人工智能是研究、开发用于模拟、延伸和扩展人的智能的理论、方法、技术及应用系统的一门新技术科学。
             {
-              "pass": true,
+              "success": "FAIL",
               "reason": "答案准确、完整地给出了人工智能的定义，满足问题要求",
               "suggestion": null
             }
@@ -538,7 +538,7 @@ public class PromptTemplates {
             用户原始问题：2025年北京市的GDP是多少？
             初始答案：北京市经济发展良好。
             {
-              "pass": false,
+              "success": "FAIL",
               "reason": "答案未提供2025年北京市GDP具体数值，未回答核心问题",
               "suggestion": "请检索2025年北京市GDP相关统计数据"
             }

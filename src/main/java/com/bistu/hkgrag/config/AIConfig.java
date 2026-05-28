@@ -26,65 +26,65 @@ import java.util.Map;
 public class AIConfig {
 
 
-    /**
-     * qwen3Max-1000b-online
-     *
-     * @return
-     */
-    @Bean
-    @Qualifier("qwen3MaxChatModel")
-    public OpenAiChatModel qwen3MaxChatModel() {
-
-        OpenAiApi api = OpenAiApi.builder()
-                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .build();
-
-        OpenAiChatOptions defaultOptions = OpenAiChatOptions.builder()
-                .model("qwen3-max")
-                .temperature(0.2)
-                .build();
-
-
-        return OpenAiChatModel.builder()
-                .openAiApi(api)
-                .defaultOptions(defaultOptions)
-                .build();
-    }
-
-    /**
-     * qwen3Max-1000b-online
-     *
-     * @return
-     */
-    @Bean
-    @Qualifier("qwen7bInsChatModel")
-    public OpenAiChatModel qwen7bInsChatModel() {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-
-        OpenAiApi api = OpenAiApi.builder()
-                // .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-                .baseUrl("http://10.146.130.140:8001")
-                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
-                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
-                .build();
-
-        OpenAiChatOptions defaultOptions = OpenAiChatOptions.builder()
-                // .model("qwen2.5-7b-instruct")
-                .model("/home/wjq/qwen2.5-7b-instruct")
-                .temperature(0.2)
-                .build();
-
-
-        return OpenAiChatModel.builder()
-                .openAiApi(api)
-                .defaultOptions(defaultOptions)
-                .build();
-    }
-
+//    /**
+//     * qwen3Max-1000b-online
+//     *
+//     * @return
+//     */
+//    @Bean
+//    @Qualifier("qwen3MaxChatModel")
+//    public OpenAiChatModel qwen3MaxChatModel() {
+//
+//        OpenAiApi api = OpenAiApi.builder()
+//                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
+//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+//                .build();
+//
+//        OpenAiChatOptions defaultOptions = OpenAiChatOptions.builder()
+//                .model("qwen3-max")
+//                .temperature(0.2)
+//                .build();
+//
+//
+//        return OpenAiChatModel.builder()
+//                .openAiApi(api)
+//                .defaultOptions(defaultOptions)
+//                .build();
+//    }
+//
+//    /**
+//     * qwen3Max-1000b-online
+//     *
+//     * @return
+//     */
+//    @Bean
+//    @Qualifier("qwen7bInsChatModel")
+//    public OpenAiChatModel qwen7bInsChatModel() {
+//        HttpClient httpClient = HttpClient.newBuilder()
+//                .version(HttpClient.Version.HTTP_1_1)
+//                .build();
+//
+//        OpenAiApi api = OpenAiApi.builder()
+//                // .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
+//                .baseUrl("http://10.146.130.140:8001")
+//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+//                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
+//                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
+//                .build();
+//
+//        OpenAiChatOptions defaultOptions = OpenAiChatOptions.builder()
+//                // .model("qwen2.5-7b-instruct")
+//                .model("/home/wjq/qwen2.5-7b-instruct")
+//                .temperature(0.2)
+//                .build();
+//
+//
+//        return OpenAiChatModel.builder()
+//                .openAiApi(api)
+//                .defaultOptions(defaultOptions)
+//                .build();
+//    }
+//
 
     /**
      * qwen3Max-1000b-online
@@ -125,18 +125,18 @@ public class AIConfig {
                 .build();
 
         OpenAiApi api = OpenAiApi.builder()
-//                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .baseUrl("http://10.146.130.140:8001")
+                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
                 .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
-                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
+//                .baseUrl("http://10.146.130.140:8001")
+//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+//                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
+//                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
                 .build();
 
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-//                .model("qwen2.5-14b-instruct")
-                .model("/home/wjq/qwen2.5-14b-instruct")
-                .temperature(0.1)
+                .model("qwen3-max")
+    //            .model("/home/wjq/qwen2.5-14b-instruct")
+                .temperature(0.7)
                 .build();
 
         OpenAiChatModel qwenModel = OpenAiChatModel.builder()
@@ -160,7 +160,8 @@ public class AIConfig {
 //                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
 //                .baseUrl("http://10.146.130.140:8001")
 //                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .baseUrl("http://127.0.0.1:8080")
+  //              .baseUrl("http://127.0.0.1:8080")
+                .baseUrl("http://10.251.1.122:31001")
                 .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
                 .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
                 .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
@@ -169,7 +170,7 @@ public class AIConfig {
         OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
                // .model("text-embedding-v4")
                 //.model("/home/wjq/qwen3-4b-embedding")
-                .model("/home/featurize/work/qwen3-4b-embedding")
+                .model("/workspace/chen/wjq/model/qwen3-embedding-4b")
                 .build();
         OpenAiEmbeddingModel embeddingModel =
                 new OpenAiEmbeddingModel(embeddingApi, MetadataMode.EMBED, options);

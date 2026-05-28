@@ -7,8 +7,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.evaluation.EvaluationRequest;
-import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -20,14 +21,13 @@ public class EvaluationAgent {
     private ChatClient chatClient;
 
     public EvaluationAgent( @Qualifier("qwen7bInsChatClient") @Autowired ChatClient chatClient) {
-
         this.chatClient = chatClient;
     }
 
     @Schema(description = "问答评估结果")
     public record EvaluationResult(
             @JsonProperty(value = "success",required = true)
-            @Schema(description = "当前答案能否回答用户提问", requiredMode = Schema.RequiredMode.REQUIRED)
+            @Schema(description = "当前答案能否成功回答用户提问", requiredMode = Schema.RequiredMode.REQUIRED)
             Evaluation success,
 
             @JsonProperty(value = "reason",required = true)
@@ -53,8 +53,17 @@ public class EvaluationAgent {
      */
     public EvaluationResult evaluate(String question,String initAnswer,String according) {
         String AnswerEvaluate_Prompt=String.format(PromptTemplates.Agent_Evaluation,question,initAnswer,according);
+        ChatOptions options = OpenAiChatOptions.builder()
+                .responseFormat(
+                        ResponseFormat.builder()
+                                .type(ResponseFormat.Type.JSON_OBJECT)
+                                .build()
+                )
+                .temperature(0.1)
+                .build();
         EvaluationResult evaluationResult=chatClient.prompt()
                 .user(AnswerEvaluate_Prompt)
+                .options(options)
                 .call()
                 .entity(EvaluationResult.class);
         return evaluationResult;
