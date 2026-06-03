@@ -125,17 +125,17 @@ public class AIConfig {
                 .build();
 
         OpenAiApi api = OpenAiApi.builder()
-                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-//                .baseUrl("http://10.146.130.140:8001")
+//                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
 //                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-//                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
-//                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
+                .baseUrl("http://10.146.130.140:8001")
+                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
+                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
                 .build();
 
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model("qwen3-max")
-    //            .model("/home/wjq/qwen2.5-14b-instruct")
+       //         .model("qwen3-max")
+               .model("/home/wjq/qwen2.5-14b-instruct")
                 .temperature(0.7)
                 .build();
 

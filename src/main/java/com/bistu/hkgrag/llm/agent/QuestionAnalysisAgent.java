@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.ResponseFormat;
@@ -157,12 +156,20 @@ public class QuestionAnalysisAgent {
             问题：“2025年的项目风险有哪些”
             topics：["项目风险","项目管理"]
             
-     
+            ## 历史执行记录使用规则
+            当存在历史执行记录时：
+            1. 分析之前已经执行过的检索计划
+            2. 分析已经调用过的工具及参数
+            3. 分析答案失败原因
+            4. 参考评估智能体给出的改进建议
+            5. 避免重复生成完全相同的检索方案
+            6. 优先尝试新的检索方向
+            当历史执行记录为空时：按照正常流程生成检索计划
             
             # 输入
             用户问题：
             %s
-            上一轮反思建议：
+            历史执行记录：
             %s
             
             # 输出
@@ -183,9 +190,11 @@ public class QuestionAnalysisAgent {
             """;
 
 
-    public RetrievalPlanResponse retrievePlan(String question, String reflectionSuggestion) {
+    public RetrievalPlanResponse retrievePlan(String question,List<TestMultiAgent.Generation> generations) {
         try{
-            String prompt = retrievalPlan_Prompt.formatted(question, reflectionSuggestion);
+            String history=Utils.buildHistory(generations);
+            String prompt = retrievalPlan_Prompt.formatted(question, history);
+
             ChatOptions options = OpenAiChatOptions.builder()
                     .responseFormat(
                             ResponseFormat.builder()

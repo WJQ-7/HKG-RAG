@@ -37,7 +37,7 @@ public class MultiAgentTest {
 
     @Test
     public void testMultiAgent() {
-        String question="2016年健翔桥校区因为什么原因导致大学英语考试地点变更？";
+        String question="2015年北京信息科技大学有哪些工会相关的计划和活动？";
         String finalAnswer=testMultiAgent.testMultiAgent(question);
         System.out.println(finalAnswer);
         Assertions.assertNotNull(finalAnswer);

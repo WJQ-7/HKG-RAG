@@ -7,6 +7,9 @@ import com.bistu.hkgrag.dao.milvus.service.ClusterService;
 import com.bistu.hkgrag.dao.milvus.service.EntityService;
 import com.bistu.hkgrag.dao.milvus.service.FileService;
 import com.bistu.hkgrag.dao.neo4j.service.Neo4jService;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
@@ -29,6 +32,8 @@ public class RetrievalTools {
     private ClusterService clusterService;
     private EntityService entityService;
     private FileService fileService;
+    private EvidenceStore evidenceStore;
+    private final ObjectMapper mapper = new ObjectMapper();
     private static Logger log = LoggerFactory.getLogger(RetrievalTools.class);
     @Value("${HKG-RAG.retrieval.TopK}")
     private int topK;
@@ -36,15 +41,60 @@ public class RetrievalTools {
     public RetrievalTools(@Autowired Neo4jService neo4jService,
                           @Autowired ClusterService clusterService,
                           @Autowired EntityService entityService,
-                          @Autowired FileService fileService) {
+                          @Autowired FileService fileService,
+                          @Autowired EvidenceStore evidenceStore) {
         this.neo4jService = neo4jService;
         this.clusterService = clusterService;
         this.entityService = entityService;
         this.fileService = fileService;
+        this.evidenceStore = evidenceStore;
     }
 
-    @Tool(description = "根据实体名称列表从知识图谱中查询实体信息,当需要查询人物、机构、项目、专业术语及相关实体属性时调用,返回结果是实体及其相关属性")
-    public String searchEntityByName(List<String> names) {
+    @Schema(description = "检索工具统一返回结构")
+    public record RetrievalResult(
+            @Schema(description = "证据Id,用于从EvidenceStore中获取完整检索内容")
+            @JsonProperty(required = true)
+            String evidentId,
+            @Schema(description = "检索摘要")
+            @JsonProperty(required = true)
+            String summary,
+            @Schema(description = "检索的全部内容")
+            @JsonProperty(required = true)
+            String content
+
+    ) {
+    }
+
+    @Tool(description = """
+            适用场景：
+            当问题查询的是人名、地名、机构名及其属性时调用。
+            知识图谱中的实体主要包括：
+            - 人名（教师、学生、校友等）
+            - 地名（校区、楼宇、地点等）
+            - 机构名（学院、部门、办公室、实验室等）
+            
+            工具功能：
+            根据实体名称查询知识图谱中的实体节点及其属性信息。
+            
+            可获取的信息包括但不限于：
+            - 人物属性（性别、国籍、身份、职务等）
+            - 机构属性（职责、联系方式、办公地点等）
+            - 地点属性（所属校区、位置说明等）
+            
+            调用时机：
+            - 查询某个人的信息
+            - 查询某个部门或机构的信息
+            - 查询某个地点的信息
+            - 查询实体的属性、联系方式、归属关系等
+            
+            参数说明：
+            names：
+            填写问题分析智能体提取出的相关实体名称列表。
+            
+            返回结果：
+            返回实体节点及其属性信息。
+            """)
+    public RetrievalResult searchEntityByName(@ToolParam(description = "问题分析智能体返回结果中的相关实体") List<String> names) {
         if (names == null || names.isEmpty()) {
             log.error("实体名称列表为空");
             return null;
@@ -61,9 +111,24 @@ public class RetrievalTools {
                 }
             }
             if (resultList.isEmpty()) {
+                log.info("没有检索到有关[{}]的实体", names);
                 return null;
             }
-            return resultList.toString();
+
+            String summary = "智能体使用[searchEntityByName]工具，以[" + names + "]为查询参数，" + "检索到相关实体: " +
+                    resultList.stream()
+                            .map(item -> String.valueOf(item.get("name")))
+                            .filter(StringUtils::hasText)
+                            .distinct()
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("无实体");
+            String content = resultList.toString();
+            String evidenceId = evidenceStore.save(mapper.writeValueAsString(resultList));
+            return new RetrievalResult(
+                    evidenceId,
+                    summary,
+                    content
+            );
         } catch (Exception e) {
             e.printStackTrace();
             log.error("工具[searchEntityByName]调用失败", e.getMessage());
@@ -72,7 +137,8 @@ public class RetrievalTools {
     }
 
     @Tool(description = """
-        当问题涉及：人物、机构、项目、专业术语、实体相关文档内容时调用。
+        适用场景：
+        当问题查询的是人名、地名、机构名的相关资料、关联文件、属性说明、归属关系时调用。
 
         该工具会：
         1. 根据实体名称检索相关实体
@@ -85,7 +151,19 @@ public class RetrievalTools {
         - 查询机构相关通知
         - 查询某实体涉及的文档内容
         """)
-    public String searchFileByEntity(List<String> keywords,String query){
+    public RetrievalResult searchFileByEntity(@ToolParam(description = "问题分析智能体输出的关键词列表") List<String> keywords,
+                                              @ToolParam(description = """
+                                                      问题分析智能体的规划结果。
+                                                      请直接使用问题分析结果中的：
+                                                      - 用户问题/子问题
+                                                      正确示例：
+                                                      - 校史工作办公室的联系电话是多少
+                                                      错误示例：
+                                                      - 联系电话
+                                                      - 资金总额
+                                                      - 邮箱
+                                                      不要只传属性名称。
+                                                      """) String query) {
         if (keywords == null || keywords.isEmpty()) {
             log.error("关键词实体列表为空");
             return null;
@@ -122,7 +200,19 @@ public class RetrievalTools {
                         .append("文档名：").append(doFile.getFileName()).append("\n")
                         .append("文档内容：").append(doFile.getContent()).append("\n\n");
             }
-            return retrievalInfoSb.toString();
+            String summary = "智能体使用[searchFileByEntity]工具，以[" + keywords + "]为查询参数，" + "检索到相关文件: " +
+                    milvus_fileList.stream()
+                            .map(DoFile::getFileName)
+                            .distinct()
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("无");
+            String content = retrievalInfoSb.toString();
+            String evidenceId = evidenceStore.save(mapper.writeValueAsString(milvus_fileList));
+            return new RetrievalResult(
+                    evidenceId,
+                    summary,
+                    content
+            );
         } catch (Exception e) {
             e.printStackTrace();
             log.error("工具[searchFileByEntity]调用失败", e.getMessage());
@@ -144,7 +234,19 @@ public class RetrievalTools {
         - 奖学金制度文件（不同学院、不同年份）
       
         """)
-    public String searchFileByTopic(@ToolParam(description = "问题相关话题") List<String> relatedTopics,  String query){
+    public RetrievalResult searchFileByTopic(@ToolParam(description = "问题分析智能体结果中的相关话题") List<String> relatedTopics,
+                                             @ToolParam(description = """
+                                                      问题分析智能体的规划结果。
+                                                      请直接使用问题分析结果中的：
+                                                      - 用户问题/子问题
+                                                      正确示例：
+                                                      - 校史工作办公室的联系电话是多少
+                                                      错误示例：
+                                                      - 联系电话
+                                                      - 资金总额
+                                                      - 邮箱
+                                                      不要只传属性名称。
+                                                      """)String query) {
         if (relatedTopics == null || relatedTopics.isEmpty()) {
             log.error("相关话题列表为空");
             return null;
@@ -174,7 +276,19 @@ public class RetrievalTools {
                         .append("文档名：").append(doFile.getFileName()).append("\n")
                         .append("文档内容：").append(doFile.getContent()).append("\n\n");
             }
-            return retrievalInfoSb.toString();
+            String summary = "智能体使用[searchFileByTopic]工具，以[" + relatedTopics + "]为话题，" + "检索到相关文件: " +
+                    topicRelatedFileList.stream()
+                            .map(DoFile::getFileName)
+                            .distinct()
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("无");
+            String content = retrievalInfoSb.toString();
+            String evidenceId = evidenceStore.save(mapper.writeValueAsString(topicRelatedFileList));
+            return new RetrievalResult(
+                    evidenceId,
+                    summary,
+                    content
+            );
         } catch (Exception e) {
             e.printStackTrace();
             log.error("工具[searchFileByTopic]调用失败", e.getMessage());
@@ -183,17 +297,18 @@ public class RetrievalTools {
     }
 
     @Tool(description = """
-            当用户问题无法明确匹配具体实体或无法归类到某一主题聚类时，调用此工具进行通用语义检索。
-           
-            该工具会直接基于问题内容进行向量相似度搜索，
-            返回语义最相关的文档内容。
+            当用户提出问题时，可使用该工具进行基于语义的向量检索。
+            该工具通过对用户问题进行语义理解，直接在知识库中检索最相关的文档内容。
+            该方法可以优先使用。
+            该方法的参数query为用户的原始问题/子问题。
             
-            适用于：
-            - 自然语言问答
-            - 模糊问题查询
-            - 综合性问题
+            适用于以下情况：
+            - 优先作为基础检索手段使用（推荐）
+            - 用户问题是自然语言描述
+            - 问题可能无法精确匹配具体实体或主题
             - 无明确实体的问题
             - 无明确主题分类的问题
+            同时，该工具也可以作为其他实体检索或主题检索失败时的兜底方案使用。
             
             例如：
             - 学校最近有哪些重要通知
@@ -202,10 +317,20 @@ public class RetrievalTools {
             - 当前有哪些项目风险
             - 学校近期的重要工作有哪些
             
-            该工具属于通用语义检索，
-            适合作为基础检索或兜底检索方式。
+            说明：该工具属于通用语义检索能力，既可以优先使用，也可以作为补充检索手段。
             """)
-    public String searchFileByQuery(String query){
+    public RetrievalResult searchFileByQuery( @ToolParam(description = """
+                                                      问题分析智能体的规划结果。
+                                                      请直接使用问题分析结果中的：
+                                                      - 用户问题/子问题
+                                                      正确示例：
+                                                      - 校史工作办公室的联系电话是多少
+                                                      错误示例：
+                                                      - 联系电话
+                                                      - 资金总额
+                                                      - 邮箱
+                                                      不要只传属性名称。
+                                                      """) String query) {
         if (query == null || query.isEmpty()) {
             log.error("相关查询为空");
         }
@@ -222,7 +347,19 @@ public class RetrievalTools {
                         .append("文档名：").append(doFile.getFileName()).append("\n")
                         .append("文档内容：").append(doFile.getContent()).append("\n\n");
             }
-            return retrievalInfoSb.toString();
+            String summary = "智能体使用[searchFileByQuery]工具，以[" + query + "]为查询参数，" + "检索到相关文件: " +
+                    fileList.stream()
+                            .map(DoFile::getFileName)
+                            .distinct()
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("无");
+            String content = retrievalInfoSb.toString();
+            String evidenceId = evidenceStore.save(mapper.writeValueAsString(fileList));
+            return new RetrievalResult(
+                    evidenceId,
+                    summary,
+                    content
+            );
         } catch (Exception e) {
             e.printStackTrace();
             log.error("工具[searchFileByQuery]失败", e.getMessage());

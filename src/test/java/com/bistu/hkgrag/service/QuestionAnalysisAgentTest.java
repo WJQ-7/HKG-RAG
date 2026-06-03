@@ -2,11 +2,13 @@ package com.bistu.hkgrag.service;
 
 
 import com.bistu.hkgrag.llm.agent.QuestionAnalysisAgent;
+import com.bistu.hkgrag.llm.agent.TestMultiAgent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @SpringBootTest(classes = com.bistu.hkgrag.HkgRagApplication.class)
@@ -30,7 +32,8 @@ public class QuestionAnalysisAgentTest {
 //        Assertions.assertNotNull(result);
         String question="祁忠勇有哪些工作任职经历，最终长期在哪所高校任教？";
         String suggestion="";
-        QuestionAnalysisAgent.RetrievalPlanResponse planResponse=agent.retrievePlan(question,suggestion);
+        List<TestMultiAgent.Generation> generations = new ArrayList<>();
+        QuestionAnalysisAgent.RetrievalPlanResponse planResponse=agent.retrievePlan(question,generations);
         System.out.println(planResponse);
         Assertions.assertNotNull(planResponse);
     }

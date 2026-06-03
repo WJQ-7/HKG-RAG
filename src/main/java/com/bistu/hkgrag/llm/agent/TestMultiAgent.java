@@ -39,38 +39,41 @@ public class TestMultiAgent {
     }
 
     public String testMultiAgent(String question) {
+
+        String conversationId =
+                java.util.UUID.randomUUID().toString();
+
         List<String> memory = new ArrayList<>();
         List<Generation> generations = new ArrayList<>();
+
         String reflectionSuggestion = "";
         for (int round = 1; round <= MAX_RETRY; round++) {
             log.info("========== 开始第 {} 轮 Agent 执行 ==========", round);
+
             /**
              * Step1：问题分析智能体
              */
             QuestionAnalysisAgent.RetrievalPlanResponse plan =
                     questionAnalysisAgent.retrievePlan(
                             question,
-                            reflectionSuggestion
+                            generations
                     );
 
             log.info("问题分析结果：{}", plan);
+
             /**
              * Step2：意图解析智能体（自主工具调用）
              */
             IntentAgent.AnswerResult answerResult =
-                    intentAgent.generationAnswer(question, plan);
+                    intentAgent.generationAnswer(question, plan,conversationId);
 
-            log.info("答案生成结果：{}", answerResult);
+           // log.info("答案生成结果：{}", answerResult);
 
             /**
              * Step3：答案评估智能体
              */
             EvaluationAgent.EvaluationResult evaluationResult =
-                    evaluationAgent.evaluate(
-                            question,
-                            answerResult.finalAnswer(),
-                            answerResult.toString()
-                    );
+                    evaluationAgent.evaluate(question,answerResult);
 
             log.info("答案评估结果：{}", evaluationResult);
 

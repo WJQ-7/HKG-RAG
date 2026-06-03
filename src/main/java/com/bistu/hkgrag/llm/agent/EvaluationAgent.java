@@ -18,10 +18,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class EvaluationAgent {
     private static Logger log = LoggerFactory.getLogger(EvaluationAgent.class);
+    private final EvidenceStore evidenceStore;
     private ChatClient chatClient;
 
-    public EvaluationAgent( @Qualifier("qwen7bInsChatClient") @Autowired ChatClient chatClient) {
+    public EvaluationAgent( @Qualifier("qwen7bInsChatClient") @Autowired ChatClient chatClient,
+                            @Autowired EvidenceStore evidenceStore) {
         this.chatClient = chatClient;
+        this.evidenceStore = evidenceStore;
     }
 
     @Schema(description = "问答评估结果")
@@ -47,12 +50,12 @@ public class EvaluationAgent {
     /**
      * 答案评估智能体对用户问题与生成得初始答案进行评估
      * @param question 用户问题
-     * @param initAnswer 生成得初始答案
-     * @param according 依据
-     * @return 评估结果
+     * @param answerResult 意图解析智能体的返回结果
+     * @return
      */
-    public EvaluationResult evaluate(String question,String initAnswer,String according) {
-        String AnswerEvaluate_Prompt=String.format(PromptTemplates.Agent_Evaluation,question,initAnswer,according);
+    public EvaluationResult evaluate(String question, IntentAgent.AnswerResult answerResult) {
+        String evidence=Utils.buildEvidence(answerResult,evidenceStore);
+        String AnswerEvaluate_Prompt=String.format(PromptTemplates.Agent_Evaluation,question,answerResult.finalAnswer(),evidence);
         ChatOptions options = OpenAiChatOptions.builder()
                 .responseFormat(
                         ResponseFormat.builder()
@@ -68,5 +71,30 @@ public class EvaluationAgent {
                 .entity(EvaluationResult.class);
         return evaluationResult;
     }
+
+//    /**
+//     * 答案评估智能体对用户问题与生成得初始答案进行评估
+//     * @param question 用户问题
+//     * @param initAnswer 生成得初始答案
+//     * @param according 依据
+//     * @return 评估结果
+//     */
+//    public EvaluationResult evaluate(String question,String initAnswer,String according) {
+//        String AnswerEvaluate_Prompt=String.format(PromptTemplates.Agent_Evaluation,question,initAnswer,according);
+//        ChatOptions options = OpenAiChatOptions.builder()
+//                .responseFormat(
+//                        ResponseFormat.builder()
+//                                .type(ResponseFormat.Type.JSON_OBJECT)
+//                                .build()
+//                )
+//                .temperature(0.1)
+//                .build();
+//        EvaluationResult evaluationResult=chatClient.prompt()
+//                .user(AnswerEvaluate_Prompt)
+//                .options(options)
+//                .call()
+//                .entity(EvaluationResult.class);
+//        return evaluationResult;
+//    }
 
 }

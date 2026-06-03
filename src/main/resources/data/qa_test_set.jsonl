@@ -57,7 +57,7 @@
 {
   "fileId": "bedf2dec-991c-4f69-be58-b929b3b26366",
   "type": "SINGLE_HOP",
-  "question": "负责校史工作的联系人是谁？",
+  "question": "2015年负责校史资料征集工作的联系人是谁？",
   "answer": "王立民",
   "according": "联 系 人：王立民"
 }
@@ -470,8 +470,8 @@
 {
   "fileId": "75cba332-ca19-4d8f-b7e1-e97ac4da8615",
   "type": "SINGLE_HOP",
-  "question": "谁获得了第十届教学名师的称号？",
-  "answer": "厉虹",
+  "question": "谁获得了2015年本科教育教学第十届教学名师的称号？",
+  "answer": "自动化学院的厉虹获得了2015年本科教育教学第十届教学名师",
   "according": "第十届教学名师 | 自动化学院 | 厉虹 | 北京市级 | 4"
 }
 {
