@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.service;
+package com.bistu.hkgrag.Service;
 
 
 import com.bistu.hkgrag.llm.agent.QuestionAnalysisAgent;

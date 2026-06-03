@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.service;
+package com.bistu.hkgrag.Service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;

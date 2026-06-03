@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.service;
+package com.bistu.hkgrag.Service;
 
 import com.bistu.hkgrag.dao.neo4j.model.Triple;
 import com.bistu.hkgrag.dao.neo4j.service.Neo4jService;

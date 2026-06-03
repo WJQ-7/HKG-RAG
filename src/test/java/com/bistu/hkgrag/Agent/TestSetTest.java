@@ -3,7 +3,7 @@ package com.bistu.hkgrag.Agent;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 
 import com.bistu.hkgrag.llm.agent.TestMultiAgent;
-import com.bistu.hkgrag.llm.controller.BaseLineService;
+import com.bistu.hkgrag.llm.service.BaseLineService;
 import com.bistu.hkgrag.llm.model.agent.EvalRecord;
 import com.bistu.hkgrag.llm.model.agent.RagResult;
 import com.bistu.hkgrag.llm.model.agent.TestSet;

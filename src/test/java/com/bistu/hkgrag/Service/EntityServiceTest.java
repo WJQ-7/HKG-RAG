@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.service;
+package com.bistu.hkgrag.Service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
 import com.bistu.hkgrag.dao.milvus.service.EntityService;

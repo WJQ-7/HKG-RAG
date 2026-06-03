@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.llm.model.Controller;
+package com.bistu.hkgrag.llm.controller;
 
 import com.bistu.hkgrag.llm.agent.TestMultiAgent;
 import org.slf4j.Logger;

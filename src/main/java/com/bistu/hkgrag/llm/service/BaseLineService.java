@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.llm.controller;
+package com.bistu.hkgrag.llm.service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.dao.milvus.service.FileService;

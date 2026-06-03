@@ -1,4 +1,4 @@
-package com.bistu.hkgrag.service;
+package com.bistu.hkgrag.Service;
 
 import com.bistu.hkgrag.preprocess.parser.DocParserService;
 

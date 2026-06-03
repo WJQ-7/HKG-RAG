@@ -1,12 +1,10 @@
-package com.bistu.hkgrag.service;
+package com.bistu.hkgrag.Service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.llm.model.rerank.RerankResponse;
 import com.bistu.hkgrag.llm.service.RerankService;
-import com.bistu.hkgrag.preprocess.utils.TextUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
