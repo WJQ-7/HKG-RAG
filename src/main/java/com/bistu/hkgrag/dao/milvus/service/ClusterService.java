@@ -1,16 +1,19 @@
 package com.bistu.hkgrag.dao.milvus.service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoCluster;
-import com.bistu.hkgrag.dao.milvus.model.DoEntity;
+
+import com.bistu.hkgrag.dao.utils.ScoreNormalizeUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.common.ConsistencyLevel;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.*;
+import io.milvus.v2.service.vector.request.data.EmbeddedText;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.request.ranker.RRFRanker;
 import io.milvus.v2.service.vector.response.InsertResp;
@@ -18,8 +21,6 @@ import io.milvus.v2.service.vector.response.QueryResp;
 import io.milvus.v2.service.vector.response.SearchResp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +42,8 @@ public class ClusterService {
     // 精确匹配权重
     @Value("${HKG-RAG.retrieval.EXACT-WEIGHT}")
     float EXACT_WEIGHT;
+    @Value("${HKG-RAG.retrieval.BM25-WEIGHT}")
+    float BM25_WEIGHT;
     // 向量匹配权重
     @Value("${HKG-RAG.retrieval.VECTOR_WEIGHT}")
     float VECTOR_WEIGHT;
@@ -74,60 +77,88 @@ public class ClusterService {
                 log.info("[{}]表已经存在", COLLECTION_NAME);
                 return true;
             }
-            List<CreateCollectionReq.FieldSchema> fields = new ArrayList<>();
+            CreateCollectionReq.CollectionSchema schema =
+                    CreateCollectionReq.CollectionSchema.builder()
+                            .build();
+
             //实体ID clusterId
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("clusterId")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("clusterId")
                     .dataType(DataType.VarChar)
                     .isPrimaryKey(true)
                     .maxLength(64)
                     .build());
             //实体名 clusterName
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("clusterName")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("clusterName")
                     .dataType(DataType.VarChar)
+                    .enableAnalyzer(true)
+                    .analyzerParams(Map.of("type", "chinese"))
                     .maxLength(512).
                     build());
             //描述 description
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("description")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("description")
                     .dataType(DataType.VarChar)
+                    .enableAnalyzer(true)
+                    .analyzerParams(Map.of("type", "chinese"))
                     .maxLength(1024).
                     build());
             //实体名向量 clusterNameVector
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("clusterNameVector")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("clusterNameVector")
                     .dataType(DataType.FloatVector)
                     .dimension(VECTOR_DIM)
                     .build());
             //描述向量 descriptionVector
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("descriptionVector")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("descriptionVector")
                     .dataType(DataType.FloatVector)
                     .dimension(VECTOR_DIM)
                     .build());
-            //构建CollectionSchema
-            CreateCollectionReq.CollectionSchema schema = CreateCollectionReq.CollectionSchema.builder()
-                    .fieldSchemaList(fields).build();
+            //实体名稀疏向量 clusterNameSparse
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("clusterNameSparse")
+                    .dataType(DataType.SparseFloatVector)
+                    .build());
+            schema.addFunction(CreateCollectionReq.Function.builder()
+                    .functionType(FunctionType.BM25)
+                    .name("clusterName_bm25")
+                    .inputFieldNames(Collections.singletonList("clusterName"))
+                    .outputFieldNames(Collections.singletonList("clusterNameSparse"))
+                    .build());
+            //描述稀疏向量 descriptionSparse
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("descriptionSparse")
+                    .dataType(DataType.SparseFloatVector)
+                    .build());
+            schema.addFunction(CreateCollectionReq.Function.builder()
+                    .functionType(FunctionType.BM25)
+                    .name("description_bm25")
+                    .inputFieldNames(Collections.singletonList("description"))
+                    .outputFieldNames(Collections.singletonList("descriptionSparse"))
+                    .build());
+
             List<IndexParam> indexParams = new ArrayList<>();
             indexParams.add(IndexParam.builder()
                     .fieldName("clusterNameVector")
                     .metricType(IndexParam.MetricType.COSINE)
                     .build());
             indexParams.add(IndexParam.builder()
-                    .fieldName("clusterName")
-                    .indexType(IndexParam.IndexType.INVERTED)
-                    .metricType(IndexParam.MetricType.BM25)
-                    .build());
-            indexParams.add(IndexParam.builder()
                     .fieldName("descriptionVector")
                     .metricType(IndexParam.MetricType.COSINE)
                     .build());
             indexParams.add(IndexParam.builder()
-                    .fieldName("description")
-                    .indexType(IndexParam.IndexType.INVERTED)
+                    .fieldName("clusterNameSparse")
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX)
                     .metricType(IndexParam.MetricType.BM25)
                     .build());
+            indexParams.add(IndexParam.builder()
+                    .fieldName("descriptionSparse")
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX) // 稀疏倒排索引
+                    .metricType(IndexParam.MetricType.BM25)                // 搭配 BM25 度量
+                    .build());
+
             //构建createCollection请求
             CreateCollectionReq req = CreateCollectionReq.builder()
                     .collectionName(COLLECTION_NAME)
@@ -284,6 +315,53 @@ public class ClusterService {
     }
 
     /**
+     * 对聚类名称进行BM25匹配
+     *
+     * @param clusterName 待匹配的聚类名称
+     * @param topK    前k个文档
+     * @return 最相关的前k个文档
+     */
+    public List<DoCluster> bm25SearchByClusterName(String clusterName, int topK) {
+
+        if (topK < 1 || clusterName == null || clusterName.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+
+            SearchReq searchReq = SearchReq.builder()
+                    .collectionName(COLLECTION_NAME)
+                    .annsField("clusterNameSparse")
+                    .data(List.of(new EmbeddedText(clusterName)))
+                    .topK(topK)
+                    .outputFields(List.of("clusterId", "clusterName", "description"))
+                    .build();
+            SearchResp resp = client.search(searchReq);
+            List<DoCluster> clusters = new ArrayList<>();
+            List<SearchResp.SearchResult> results = resp.getSearchResults().get(0);
+            for (SearchResp.SearchResult result : results) {
+                Map<String, Object> map = result.getEntity();
+                Float score = result.getScore();
+                DoCluster cluster = new DoCluster();
+                cluster.setClusterId(map.get("clusterId").toString());
+                cluster.setClusterName(map.get("clusterName").toString());
+                cluster.setDescription(map.get("description").toString());
+                cluster.setDescriptionScore(score);
+                clusters.add(cluster);
+            }
+
+            ScoreNormalizeUtil.logAndImprovedMinMax(clusters, DoCluster::getDescriptionScore, DoCluster::setDescriptionScore);
+            log.info("[{}]表对聚类名称[{}]BM25搜索完成，结果数:{}", COLLECTION_NAME, clusterName, clusters.size());
+            return clusters;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("[{}]表对聚类名称进行BM25检索失败", COLLECTION_NAME);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * 根据聚类节点名称进行像向量检索
      *
      * @param clusterName 待检索聚类检点节点名
@@ -349,16 +427,16 @@ public class ClusterService {
         try {
 
             //1.进行精确匹配
-            List<DoCluster> exactList = exactSearchByClusterName(clusterName, 2 * topK);
+            List<DoCluster> bm25List = bm25SearchByClusterName(clusterName, 2 * topK);
             //2.进行向量检索
             List<DoCluster> vectorList = vectorSearchByClusterName(clusterName, 2 * topK);
             //3.收集结果并进行去重
             Map<String, DoCluster> entityMap = new HashMap<>();
 
             // 处理精确匹配结果
-            for (DoCluster exactCluster : exactList) {
+            for (DoCluster exactCluster : bm25List) {
                 // 加权分数：a*精确分 + b*向量分（精确匹配默认向量分为0）
-                float finalScore = EXACT_WEIGHT * exactCluster.getClusterNameScore();
+                float finalScore = BM25_WEIGHT * exactCluster.getClusterNameScore();
                 exactCluster.setClusterNameScore(finalScore);
                 entityMap.put(exactCluster.getClusterId(), exactCluster);
             }
@@ -401,23 +479,23 @@ public class ClusterService {
     /**
      * 根据聚类节点描述进行精确匹配
      *
-     * @param topic 待匹配的相关话题
+     * @param description 待匹配的相关
      * @param topK
      * @return
      */
-    public List<DoCluster> exactSearchByClusterDescription(String topic, int topK) {
+    public List<DoCluster> exactSearchByClusterDescription(String description, int topK) {
         if (topK < 1) {
             log.info("通过话题根据聚类节点描述的精确检索的topK小于1");
             return Collections.emptyList();
         }
-        if (topic == null || topic.isEmpty()) {
+        if (description == null || description.isEmpty()) {
             log.info("待进精确检索的话题为空");
             return Collections.emptyList();
         }
         try {
             QueryReq queryReq = QueryReq.builder()
                     .collectionName(COLLECTION_NAME)
-                    .filter("description == \"" + topic + "\"")
+                    .filter("description == \"" + description + "\"")
                     .limit(topK)
                     .outputFields(List.of("clusterId", "clusterName", "description"))
                     .build();
@@ -435,7 +513,55 @@ public class ClusterService {
             }
             return entities;
         } catch (Exception e) {
-            log.error("[{}]表精确匹配失败，待匹配的话题：{}", COLLECTION_NAME, topic);
+            log.error("[{}]表精确匹配失败，待匹配的话题：{}", COLLECTION_NAME, description);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 对聚类描述进行BM25匹配
+     *
+     * @param description 待匹配的描述
+     * @param topK    前k个文档
+     * @return 最相关的前k个文档
+     */
+    public List<DoCluster> bm25SearchByDescription(String description, int topK) {
+
+        if (topK < 1 || description == null || description.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+
+            SearchReq searchReq = SearchReq.builder()
+                    .collectionName(COLLECTION_NAME)
+                    .annsField("descriptionVector")
+                    .data(List.of(new EmbeddedText(description)))
+                    .topK(topK)
+                    .outputFields(List.of("clusterId", "clusterName", "description"))
+                    .build();
+            SearchResp resp = client.search(searchReq);
+
+            List<DoCluster> clusters = new ArrayList<>();
+            List<SearchResp.SearchResult> results = resp.getSearchResults().get(0);
+            for (SearchResp.SearchResult result : results) {
+                Map<String, Object> map = result.getEntity();
+                Float score = result.getScore();
+                DoCluster cluster = new DoCluster();
+                cluster.setClusterId(map.get("clusterId").toString());
+                cluster.setClusterName(map.get("clusterName").toString());
+                cluster.setDescription(map.get("description").toString());
+                cluster.setDescriptionScore(score);
+                clusters.add(cluster);
+            }
+
+            ScoreNormalizeUtil.logAndImprovedMinMax(clusters, DoCluster::getDescriptionScore, DoCluster::setDescriptionScore);
+            log.info("[{}]表对聚类描述[{}]BM25搜索完成，结果数:{}", COLLECTION_NAME, description, clusters.size());
+            return clusters;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("[{}]表对聚类描述进行BM25检索失败", COLLECTION_NAME);
             return Collections.emptyList();
         }
     }
@@ -505,16 +631,16 @@ public class ClusterService {
         }
         try {
             //1.进行精确匹配
-            List<DoCluster> exactList = exactSearchByClusterDescription(topic, 2 * topK);
+            List<DoCluster> bm25List = bm25SearchByDescription(topic, 2 * topK);
             //2.进行向量检索
             List<DoCluster> vectorList = vectorSearchByClusterDescription(topic, 2 * topK);
             //3.收集结果并进行去重
             Map<String, DoCluster> clusterMap = new HashMap<>();
 
             // 处理精确匹配结果
-            for (DoCluster exactCluster : exactList) {
+            for (DoCluster exactCluster : bm25List) {
                 // 加权分数：a*精确分 + b*向量分（精确匹配默认向量分为0）
-                float finalScore = EXACT_WEIGHT * exactCluster.getDescriptionScore();
+                float finalScore = BM25_WEIGHT * exactCluster.getDescriptionScore();
                 exactCluster.setDescriptionScore(finalScore);
                 clusterMap.put(exactCluster.getClusterId(), exactCluster);
             }

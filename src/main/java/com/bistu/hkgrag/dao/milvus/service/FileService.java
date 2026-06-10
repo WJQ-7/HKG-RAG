@@ -2,11 +2,14 @@ package com.bistu.hkgrag.dao.milvus.service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
+import com.bistu.hkgrag.dao.utils.ScoreNormalizeUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.*;
@@ -44,9 +47,14 @@ public class FileService {
     // 精确匹配权重 a
     @Value("${HKG-RAG.retrieval.EXACT-WEIGHT}")
     float EXACT_WEIGHT;
+    @Value("${HKG-RAG.retrieval.BM25-WEIGHT}")
+    float BM25_WEIGHT;
     // 向量匹配权重 b
     @Value("${HKG-RAG.retrieval.VECTOR_WEIGHT}")
     float VECTOR_WEIGHT;
+    //bm25归一化参数
+    private static final float SIGMOID_ALPHA = 0.2f;
+    private static final float SIGMOID_BETA = 5.0f;
 
     public FileService(MilvusClientV2 client,
                        @Autowired @Qualifier("qwenEmbeddingModel") EmbeddingModel embeddingModel) {
@@ -78,51 +86,84 @@ public class FileService {
                 return true;
             }
 
-            List<CreateCollectionReq.FieldSchema> fields = new ArrayList<>();
+            CreateCollectionReq.CollectionSchema schema =
+                    CreateCollectionReq.CollectionSchema.builder()
+                            .build();
+
 
             //文件ID
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("fileId")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("fileId")
                     .dataType(DataType.VarChar)
                     .maxLength(64)
                     .build());
+
             //chunkID
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("chunkId")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("chunkId")
                     .dataType(DataType.VarChar)
                     .isPrimaryKey(true)
                     .maxLength(64)
                     .build());
+
             //文件名fileName
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("fileName")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("fileName")
                     .dataType(DataType.VarChar)
-                    .maxLength(512).
-                    build());
+                    .maxLength(512)
+                    .build());
             //分片主题topic
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("topic")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("topic")
                     .dataType(DataType.VarChar)
                     .maxLength(256)
+                    .enableAnalyzer(true)
+                    .analyzerParams(Map.of("type", "chinese"))
                     .build());
             //文件内容content
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("content")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("content")
                     .dataType(DataType.VarChar)
                     .maxLength(28000)
+                    .enableAnalyzer(true)
+                    .analyzerParams(Map.of("type", "chinese"))
+                    .build());
+            //话题稀疏向量
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("topicSparse")
+                    .dataType(DataType.SparseFloatVector)
+                    .build());
+            schema.addFunction(CreateCollectionReq.Function.builder()
+                    .functionType(FunctionType.BM25)
+                    .name("topic_bm25")
+                    .inputFieldNames(Collections.singletonList("topic"))
+                    .outputFieldNames(Collections.singletonList("topicSparse"))
+                    .build());
+            //内容稀疏向量
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("contentSparse")
+                    .dataType(DataType.SparseFloatVector)
+                    .build());
+            schema.addFunction(CreateCollectionReq.Function.builder()
+                    .functionType(FunctionType.BM25)
+                    .name("content_bm25")
+                    .inputFieldNames(Collections.singletonList("content"))
+                    .outputFieldNames(Collections.singletonList("contentSparse"))
                     .build());
             //主题向量 topicVector
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("topicVector")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("topicVector")
                     .dataType(DataType.FloatVector)
                     .dimension(VECTOR_DIM)
                     .build());
             //文档内容向量 contentVector
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("contentVector")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("contentVector")
                     .dataType(DataType.FloatVector)
                     .dimension(VECTOR_DIM)
                     .build());
+
+
             //构建主题向量和文档内容向量索引
             List<IndexParam> indexParams = new ArrayList<>();
             indexParams.add(IndexParam.builder()
@@ -134,18 +175,17 @@ public class FileService {
                     .metricType(IndexParam.MetricType.COSINE)
                     .build());
             indexParams.add(IndexParam.builder()
-                    .fieldName("content")
-                    .indexType(IndexParam.IndexType.INVERTED)
+                    .fieldName("topicSparse")
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX)
                     .metricType(IndexParam.MetricType.BM25)
                     .build());
             indexParams.add(IndexParam.builder()
-                    .fieldName("topic")
-                    .indexType(IndexParam.IndexType.INVERTED)
-                    .metricType(IndexParam.MetricType.BM25)
+                    .fieldName("contentSparse")
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX) // 稀疏倒排索引
+                    .metricType(IndexParam.MetricType.BM25)                // 搭配 BM25 度量
                     .build());
-            //构建CollectionSchema
-            CreateCollectionReq.CollectionSchema schema = CreateCollectionReq.CollectionSchema.builder()
-                    .fieldSchemaList(fields).build();
+
+
             //构建创建Collection请求
             CreateCollectionReq req = CreateCollectionReq.builder()
                     .collectionName(COLLECTION_NAME)
@@ -426,6 +466,60 @@ public class FileService {
         }
     }
 
+    /**
+     * 对文档主题进行BM25匹配
+     *
+     * @param content 待匹配的文本
+     * @param topK    前k个文档
+     * @return 最相关的前k个文档
+     */
+    public List<DoFile> bm25SearchByTopic(String content, int topK) {
+
+        if (topK < 1 || content == null || content.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+
+            SearchReq searchReq = SearchReq.builder()
+                    .collectionName(COLLECTION_NAME)
+                    .annsField("topicSparse")
+                    .data(List.of(new EmbeddedText(content)))
+
+                    .topK(topK)
+                    .outputFields(List.of(
+                            "fileId",
+                            "chunkId",
+                            "fileName",
+                            "topic",
+                            "content"
+                    ))
+                    .build();
+            SearchResp resp = client.search(searchReq);
+
+            List<DoFile> resultList = new ArrayList<>();
+            List<SearchResp.SearchResult> results = resp.getSearchResults().get(0);
+            for (SearchResp.SearchResult r : results) {
+                Map<String, Object> e = r.getEntity();
+                DoFile file = new DoFile();
+                file.setFileId(String.valueOf(e.get("fileId")));
+                file.setChunkId(String.valueOf(e.get("chunkId")));
+                file.setFileName(String.valueOf(e.get("fileName")));
+                file.setTopic(String.valueOf(e.get("topic")));
+                file.setContent(String.valueOf(e.get("content")));
+                file.setTopicScore(r.getScore());
+                resultList.add(file);
+            }
+            ScoreNormalizeUtil.logAndImprovedMinMax(resultList, DoFile::getTopicScore, DoFile::setTopicScore);
+            log.info("[{}]表对话题[{}]BM25搜索完成，结果数:{}", COLLECTION_NAME, content, resultList.size());
+            return resultList;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("[{}]表对文件话题进行BM25检索失败", COLLECTION_NAME);
+            return Collections.emptyList();
+        }
+    }
 
     /**
      * 根据话题对文件进行向量检索
@@ -473,6 +567,7 @@ public class FileService {
                 file.setTopicScore(score);
                 files.add(file);
             }
+            log.info("[{}]表对话题[{}]向量搜索完成，结果数:{}", COLLECTION_NAME, topic, files.size());
             return files;
         } catch (Exception e) {
             e.printStackTrace();
@@ -499,16 +594,16 @@ public class FileService {
         }
         try {
             //1.进行精确匹配
-            List<DoFile> exactList = exactSearchByTopic(topic, 2 * topK);
+            List<DoFile> bm25List = bm25SearchByTopic(topic, 2 * topK);
             //2.进行向量检索
             List<DoFile> vectorList = vectorSearchByTopic(topic, 2 * topK);
             //3.收集结果并进行去重
             Map<String, DoFile> entityMap = new HashMap<>();
 
             // 处理精确匹配结果
-            for (DoFile exactFile : exactList) {
+            for (DoFile exactFile : bm25List) {
                 // 加权分数：a*精确分 + b*向量分（精确匹配默认向量分为0）
-                float finalScore = EXACT_WEIGHT * exactFile.getTopicScore();
+                float finalScore = BM25_WEIGHT * exactFile.getTopicScore();
                 exactFile.setTopicScore(finalScore);
                 //TODO 考虑用chunkId还是fileId
                 entityMap.put(exactFile.getChunkId(), exactFile);
@@ -595,59 +690,63 @@ public class FileService {
         }
     }
 
-//    public List<DoFile> bm25SearchByContent(String content, int topK) {
-//        if (topK < 1) {
-//            log.info("通过内容进行BM25检索的topK小于1");
-//            return Collections.emptyList();
-//        }
-//        if (content == null || content.isEmpty()) {
-//            log.info("待进行BM25检索的内容为空");
-//            return Collections.emptyList();
-//        }
-//        try{
-//            // 1. 构建 BM25 检索请求（Milvus v2 版本）
-//            QueryReq queryReq = QueryReq.builder()
-//                    .collectionName(COLLECTION_NAME)
-//                    .filter("content MATCH '" + content + "'")  // BM25 关键词检索
-//                    .limit(topK)
-//                    .outputFields(List.of("fileId", "chunkId", "fileName", "topic", "content"))
-//                    .build();
-//
-//            QueryResp resp = client.query(queryReq);
-//            List<DoFile> resultList = new ArrayList<>(); SearchReq searchReq = SearchReq.builder()
-//                    .collectionName(COLLECTION_NAME)
-//                    // 核心！！！指定文本字段，让Milvus做BM25关键词搜索
-//                    .weightFieldName("content")
-//                    // 搜索文本
-//                    .data(Collections.singletonList(content))
-//                    .topK(topK)
-//                    .outputFields(List.of("fileId", "chunkId", "fileName", "topic", "content"))
-//                    .build();
-//
-//            for (QueryResp.QueryResult queryResult : resp.getQueryResults()) {
-//                DoFile file = new DoFile();
-//                file.setFileId(queryResult.getEntity().get("fileId").toString());
-//                file.setChunkId(queryResult.getEntity().get("chunkId").toString());
-//                file.setFileName(queryResult.getEntity().get("fileName").toString());
-//                file.setTopic(queryResult.getEntity().get("topic").toString());
-//                file.setContent(queryResult.getEntity().get("content").toString());
-//
-//                // BM25 相关性分数（自动计算）
-//                file.setContentScore(queryResult.getScore());
-//
-//                resultList.add(file);
-//            }
-//
-//            log.info("[{}]表BM25检索完成，关键词：{}，结果数：{}", COLLECTION_NAME, content, files.size());
-//            return files;
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            log.error("[{}]表进行BM25检索失败", COLLECTION_NAME);
-//            return Collections.emptyList();
-//        }
-//
-//    }
+
+
+
+    /**
+     * 对文档内容进行BM25匹配
+     *
+     * @param content 待匹配的文本
+     * @param topK    前k个文档
+     * @return 最相关的前k个文档
+     */
+    public List<DoFile> bm25SearchByContent(String content, int topK) {
+
+        if (topK < 1 || content == null || content.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+
+            SearchReq searchReq = SearchReq.builder()
+                    .collectionName(COLLECTION_NAME)
+                    .annsField("contentSparse")
+                    .data(List.of(new EmbeddedText(content)))
+
+                    .topK(topK)
+                    .outputFields(List.of(
+                            "fileId",
+                            "chunkId",
+                            "fileName",
+                            "topic",
+                            "content"
+                    ))
+                    .build();
+            SearchResp resp = client.search(searchReq);
+
+            List<DoFile> resultList = new ArrayList<>();
+            List<SearchResp.SearchResult> results = resp.getSearchResults().get(0);
+            for (SearchResp.SearchResult r : results) {
+                Map<String, Object> e = r.getEntity();
+                DoFile file = new DoFile();
+                file.setFileId(String.valueOf(e.get("fileId")));
+                file.setChunkId(String.valueOf(e.get("chunkId")));
+                file.setFileName(String.valueOf(e.get("fileName")));
+                file.setTopic(String.valueOf(e.get("topic")));
+                file.setContent(String.valueOf(e.get("content")));
+                file.setContentScore(r.getScore());
+                resultList.add(file);
+            }
+            ScoreNormalizeUtil.logAndImprovedMinMax(resultList, DoFile::getContentScore, DoFile::setContentScore);
+            log.info("[{}]表对内容[{}]BM25搜索完成，结果数:{}", COLLECTION_NAME, content, resultList.size());
+            return resultList;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("[{}]表对[{}]文件内容进行BM25检索失败", COLLECTION_NAME,content);
+            return Collections.emptyList();
+        }
+    }
 
 
     /**
@@ -707,6 +806,8 @@ public class FileService {
     }
 
 
+
+
     /**
      * 对文档内容进行混合检索（对content字段得精确匹配和对contentVector字段的相似度匹配）
      *
@@ -724,27 +825,27 @@ public class FileService {
             return Collections.emptyList();
         }
         try {
-            //1.进行精确匹配
-            List<DoFile> exactList = exactSearchByContent(content, 2 * topK);
+            //1.进行BM25匹配
+            List<DoFile> bm25List = bm25SearchByContent(content, 2 * topK);
             //2.进行向量检索
             List<DoFile> vectorList = vectorSearchByContent(content, 2 * topK);
             //3.收集结果并进行去重
             Map<String, DoFile> entityMap = new HashMap<>();
 
             // 处理精确匹配结果
-            for (DoFile exactFile : exactList) {
-                // 加权分数：a*精确分 + b*向量分（精确匹配默认向量分为0）
-                float finalScore = EXACT_WEIGHT * exactFile.getContentScore();
-                exactFile.setContentScore(finalScore);
+            for (DoFile bm25File : bm25List) {
+                // 加权分数：a*bm25分数 + b*向量分数
+                float finalScore = BM25_WEIGHT * bm25File.getContentScore();
+                bm25File.setContentScore(finalScore);
                 //TODO 考虑用chunkId还是fileId
-                entityMap.put(exactFile.getChunkId(), exactFile);
+                entityMap.put(bm25File.getChunkId(), bm25File);
             }
 
             // 处理向量匹配结果（已存在则更新分数，不存在则新增）
             for (DoFile vecFile : vectorList) {
                 String chunkId = vecFile.getChunkId();
                 if (entityMap.containsKey(chunkId)) {
-                    // 已存在（精确+向量都命中）：累加向量权重分数
+                    // 已存在（bm25+向量都命中）：累加向量权重分数
                     DoFile exist = entityMap.get(chunkId);
                     float newScore = exist.getContentScore() + VECTOR_WEIGHT * vecFile.getContentScore();
                     exist.setContentScore(newScore);

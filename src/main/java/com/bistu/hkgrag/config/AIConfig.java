@@ -118,6 +118,34 @@ public class AIConfig {
      * @return
      */
     @Bean
+    @Qualifier("deepseekV4")
+    public ChatClient deepseekChatClient() {
+
+
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl("https://api.deepseek.com")
+                .apiKey("sk-990a74e4f73444b194caf3ffb4c0cce3")
+                .build();
+
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model("deepseek-v4-flash")
+                .temperature(0.7)
+                .build();
+
+        OpenAiChatModel qwenModel = OpenAiChatModel.builder()
+                .openAiApi(api)
+                .defaultOptions(options)
+                .build();
+
+        return ChatClient.builder(qwenModel).build();
+    }
+
+    /**
+     * qwen7bInsChatClient
+     *
+     * @return
+     */
+    @Bean
     @Qualifier("qwen7bInsChatClient")
     public ChatClient qwen7bInsChatClient() {
         HttpClient httpClient = HttpClient.newBuilder()
@@ -125,17 +153,17 @@ public class AIConfig {
                 .build();
 
         OpenAiApi api = OpenAiApi.builder()
-//                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .baseUrl("http://10.146.130.140:8001")
+                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
                 .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
-                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
+//                .baseUrl("http://10.146.130.140:8001")
+//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+//                .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
+//                .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
                 .build();
 
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-       //         .model("qwen3-max")
-               .model("/home/wjq/qwen2.5-14b-instruct")
+                .model("qwen3-max")
+     //          .model("/home/wjq/qwen2.5-14b-instruct")
                 .temperature(0.7)
                 .build();
 

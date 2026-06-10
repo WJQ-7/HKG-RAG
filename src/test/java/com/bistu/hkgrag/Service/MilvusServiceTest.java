@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -141,19 +142,26 @@ public class MilvusServiceTest {
     }
 
     @Test
+    public void test_bm25SearchByContent(){
+        String content="北京信息科技大学";
+        List<DoFile> fileList=fileService.bm25SearchByContent(content,5);
+        Assertions.assertEquals(5,fileList.size());
+    }
+
+    @Test
     public void test_FileHybridRetrieval(){
         String content="补考地点变更通知由于暑期教室改造，健翔桥校区教三楼不能正常进行听力放音，原大学英语考试地点变更如下：8月26日上午10:20-12:20的大英（2）考试地点由3-五阶变更为1-三阶。8月26日下午13:30-15:30的大英（4）和大英（2）A班考试地点由3-五阶变更为1-三阶。教务处2016年8月24日";
         List<DoFile> exactFileList=fileService.exactSearchByContent(content,5);
         Assertions.assertNotNull(exactFileList);
 
-//        List<DoFile> bm25FileList=fileService.bm25SearchByContent(content,5);
-//        Assertions.assertEquals(bm25FileList.size(),5);
+        List<DoFile> bm25FileList=fileService.bm25SearchByContent(content,5);
+        Assertions.assertEquals(bm25FileList.size(),5);
 
         List<DoFile> vecFileList=fileService.vectorSearchByContent(content,5);
         Assertions.assertEquals(vecFileList.size(),5);
 
         List<DoFile> fileList=fileService.hybridSearchByContent(content,5);
-        Assertions.assertEquals(fileList,5);
+        Assertions.assertEquals(fileList.size(),5);
 
         String topic="面向教职工的汽车养护优惠服务及相关规定";
         List<DoFile> exactFileListByTopic=fileService.exactSearchByTopic(topic,5);
@@ -171,6 +179,8 @@ public class MilvusServiceTest {
         int topK=5;
         List<DoEntity> exactList=entityService.exactSearchByEntityName(name,topK);
         Assertions.assertNotNull(exactList);
+        List<DoEntity> bm25List=entityService.bm25SearchByEntityName(name,topK);
+        Assertions.assertNotNull(bm25List);
         List<DoEntity> vectorList=entityService.vectorSearchByEntityName(name,topK);
         Assertions.assertEquals(vectorList.size(),topK);
         List<DoEntity>  entities=entityService.hybridSearchEntity(name,topK);

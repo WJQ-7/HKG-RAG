@@ -1,0 +1,27 @@
+=========== RESULT ===========
+
+Type : SINGLE_HOP Count: 70
+EM : 0.0000
+F1 : 0.4549
+ROUGE-L : 0.4305
+RECALL : 0.9491
+---------------------------
+Type : SAME_DOC_Multi_HOP Count: 20
+EM : 0.0000
+F1 : 0.4718
+ROUGE-L : 0.3911
+RECALL : 0.7999
+---------------------------
+Type : CROSS_DOC_Multi_HOP Count: 30
+EM : 0.0000
+F1 : 0.4429
+ROUGE-L : 0.3788
+RECALL : 0.8672
+---------------------------
+
+=========== OVERALL ===========
+测试集总数: 120
+EM : 0.0000
+F1 : 0.4547
+ROUGE-L : 0.4110
+RECALL : 0.9038

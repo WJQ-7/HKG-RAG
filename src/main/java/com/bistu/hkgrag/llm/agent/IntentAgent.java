@@ -1,6 +1,7 @@
 package com.bistu.hkgrag.llm.agent;
 
 
+import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +32,7 @@ public class IntentAgent {
     private ChatClient chatClient;
     private final RetrievalTools retrievalTools;
     private final ToolCallAdvisor toolCallAdvisor;
+
     private final ToolCallingManager toolCallingManager;
     private final MessageChatMemoryAdvisor chatMemoryAdvisor;
     private ChatMemory chatMemory;
@@ -133,7 +135,6 @@ public class IntentAgent {
             你的职责：
             1. 根据输入的结构化问题分析结果，判断需要调用哪些工具
             2. 调用工具获取知识
-            3. 基于工具结果生成最终答案
             
             【工具选择规则】
             1. 用户问题询问：
@@ -151,8 +152,7 @@ public class IntentAgent {
                - 某项目负责人
                - 某实体属性
                使用 searchEntityByName
-            3. 当问题查询的是人名、地名、机构名的相关资料、关联文件、属性说明、归属关系时调用。：
-               使用 searchFileByEntity
+            
             4. 用户问题涉及主题归纳：
                使用 searchFileByTopic
             5. 不确定时：
@@ -160,6 +160,7 @@ public class IntentAgent {
             
             
             【工具调用约束】
+            - 每轮至少选用一个检索工具
             - 当调用工具时，必须优先使用“问题分析智能体结果”中的内容作为参数来源。
             - 禁止重复调用“相同工具 + 相同语义参数”
             - 若某工具已对某语义问题返回结果，则必须：
@@ -177,15 +178,8 @@ public class IntentAgent {
             
             # 任务：
             1.你需要根据“问题分析智能体”的结果去选择检索工具，将问题分析智能体的相关结果作为检索工具的参数。
-            2.自主判断应该调用哪些检索工具，
-            3.通过工具获取知识，
-            4.依据获取的相关知识回答用户问题。
-            
-            # 回答规则
-            1.必须**严格依据检索结果**作答，禁止编造、扩展无关内容。
-            2.答案要简洁、准确、完整，直接回应问题。
-            3.若检索结果无相关信息，可以明确回答："根据现有检索结果，无法回答该问题"。
-            4.无需说明回答来源的文档，仅回答问题即可。
+            2.自主判断应该调用哪些检索工具。
+            3.考虑使用哪个工具更可能获得问题/子问题的答案。
           
             # 问题分析智能体结果
             用户问题：%s
@@ -197,6 +191,33 @@ public class IntentAgent {
             规划原因：%s
             
             请开始自主选择工具并完成问题回答。
+            """;
+
+    public static final String ANSWER_PROMPT = """
+            # 角色：你是一个问答智能体。
+            # 任务：
+            1.你需要根据相关检索结果回答用户问题。
+            2.简单具体的问题需要依据检索结果进行简洁地回答，概述性问题需要更为发散的回答。
+            
+            # 回答要求
+            1. 回答必须**完全基于检索到的文档内容**，不允许编造、扩展或使用外部知识。
+            2. 回答语言要简洁、准确、通顺，符合用户问题的要求。
+            3. 如果多个文档出现相同信息，进行汇总
+            4. 如果证据不足，明确说明无法回答
+            
+            ## 输入
+            用户问题：
+            %s
+            相关信息：
+            %s
+            
+            要求：
+            
+            1.禁止使用外部知识
+            2.禁止编造
+            3.多个证据需要进行汇总
+            4.证据不足时明确说明无法回答
+            5.回答尽量完整
             """;
 
     public AnswerResult generationAnswer(String question,QuestionAnalysisAgent.RetrievalPlanResponse plan, String conversationId) {
@@ -238,6 +259,7 @@ public class IntentAgent {
         //获取工具调用记录
         List<ToolCallTrace> toolCallTraces =
                 extractToolTraces(conversationId);
+
 
         // 获取回答
         String finalAnswer = response.getResult().getOutput().getText();

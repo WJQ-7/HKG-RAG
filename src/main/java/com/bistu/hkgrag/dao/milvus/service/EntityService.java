@@ -2,15 +2,20 @@ package com.bistu.hkgrag.dao.milvus.service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
 import com.bistu.hkgrag.dao.milvus.model.DoEntity;
+import com.bistu.hkgrag.dao.milvus.model.DoFile;
+import com.bistu.hkgrag.dao.utils.ScoreNormalizeUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq.FieldSchema;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.*;
+import io.milvus.v2.service.vector.request.data.EmbeddedText;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.request.ranker.RRFRanker;
 import io.milvus.v2.service.vector.response.InsertResp;
@@ -48,6 +53,9 @@ public class EntityService {
     // 精确匹配权重
     @Value("${HKG-RAG.retrieval.EXACT-WEIGHT}")
     float EXACT_WEIGHT;
+    //BM25匹配权重
+    @Value("${HKG-RAG.retrieval.BM25-WEIGHT}")
+    float BM25_WEIGHT;
     // 向量匹配权重
     @Value("${HKG-RAG.retrieval.VECTOR_WEIGHT}")
     float VECTOR_WEIGHT;
@@ -82,39 +90,56 @@ public class EntityService {
                 log.info("[{}]表已经存在", COLLECTION_NAME);
                 return true;
             }
-            List<FieldSchema> fields = new ArrayList<>();
+            CreateCollectionReq.CollectionSchema schema =
+                    CreateCollectionReq.CollectionSchema.builder()
+                            .build();
+
+
             //实体ID entityId
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("entityId")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("entityId")
                     .dataType(DataType.VarChar)
                     .isPrimaryKey(true)
                     .maxLength(64)
                     .build());
+
             //实体名 entityName
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("entityName")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("entityName")
                     .dataType(DataType.VarChar)
+                    .enableAnalyzer(true)
+                    .analyzerParams(Map.of("type", "chinese"))
                     .maxLength(512).
                     build());
             //实体名向量 entityNameVector
-            fields.add(CreateCollectionReq.FieldSchema.builder()
-                    .name("entityNameVector")
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("entityNameVector")
                     .dataType(DataType.FloatVector)
                     .dimension(VECTOR_DIM)
                     .build());
-            //构建CollectionSchema
-            CreateCollectionReq.CollectionSchema schema = CreateCollectionReq.CollectionSchema.builder()
-                    .fieldSchemaList(fields).build();
+            //实体名 稀疏向量 entitySparse
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("entityNameSparse")
+                    .dataType(DataType.SparseFloatVector)
+                    .build());
+            schema.addFunction(CreateCollectionReq.Function.builder()
+                    .functionType(FunctionType.BM25)
+                    .name("entityName_bm25")
+                    .inputFieldNames(Collections.singletonList("entityName"))
+                    .outputFieldNames(Collections.singletonList("entityNameSparse"))
+                    .build());
+
             List<IndexParam> indexParams = new ArrayList<>();
             indexParams.add(IndexParam.builder()
                     .fieldName("entityNameVector")
                     .metricType(IndexParam.MetricType.COSINE)
                     .build());
             indexParams.add(IndexParam.builder()
-                    .fieldName("entityName")
-                    .indexType(IndexParam.IndexType.INVERTED)
+                    .fieldName("entityNameSparse")
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX)
                     .metricType(IndexParam.MetricType.BM25)
                     .build());
+
             //构建createCollection请求
             CreateCollectionReq req = CreateCollectionReq.builder()
                     .collectionName(COLLECTION_NAME)
@@ -263,6 +288,52 @@ public class EntityService {
     }
 
     /**
+     * 对实体名称进行BM25匹配
+     *
+     * @param entityName 待匹配的文本
+     * @param topK    前k个实体
+     * @return 最相关的前k个实体
+     */
+    public List<DoEntity> bm25SearchByEntityName(String entityName, int topK) {
+
+        if (topK < 1 || entityName == null || entityName.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+
+            SearchReq searchReq = SearchReq.builder()
+                    .collectionName(COLLECTION_NAME)
+                    .annsField("entityNameSparse")
+                    .data(List.of(new EmbeddedText(entityName)))
+                    .topK(topK)
+                    .outputFields(List.of("entityId", "entityName"))
+                    .build();
+            SearchResp resp = client.search(searchReq);
+
+            List<DoEntity> entities = new ArrayList<>();
+            List<SearchResp.SearchResult> results = resp.getSearchResults().get(0);
+            for (SearchResp.SearchResult result : results) {
+                Map<String, Object> map = result.getEntity();
+                Float score = result.getScore();
+                DoEntity entity = new DoEntity();
+                entity.setEntityId(map.get("entityId").toString());
+                entity.setEntityName(map.get("entityName").toString());
+                entity.setScore(score);
+                entities.add(entity);
+            }
+
+            ScoreNormalizeUtil.logAndImprovedMinMax(entities, DoEntity::getScore, DoEntity::setScore);
+            log.info("[{}]表对实体名[{}]BM25搜索完成，结果数:{}", COLLECTION_NAME, entityName, entities.size());
+            return entities;
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("[{}]表对实体名称进行BM25检索失败", COLLECTION_NAME);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * 根据实体名进行像向量检索
      * @param entityName 待检索实体名
      * @param topK
@@ -327,16 +398,16 @@ public class EntityService {
         try {
 
             //1.进行精确匹配
-            List<DoEntity> exactList=exactSearchByEntityName(entityName, 2*topK);
+            List<DoEntity> bm25List=bm25SearchByEntityName(entityName, 2*topK);
             //2.进行向量检索
             List<DoEntity> vectorList=vectorSearchByEntityName(entityName, 2*topK);
             //3.收集结果并进行去重
             Map<String, DoEntity> entityMap = new HashMap<>();
 
             // 处理精确匹配结果
-            for (DoEntity exactEntity : exactList) {
+            for (DoEntity exactEntity : bm25List) {
                 // 加权分数：a*精确分 + b*向量分（精确匹配默认向量分为0）
-                float finalScore = EXACT_WEIGHT * exactEntity.getScore();
+                float finalScore = BM25_WEIGHT * exactEntity.getScore();
                 exactEntity.setScore(finalScore);
                 entityMap.put(exactEntity.getEntityId(), exactEntity);
             }

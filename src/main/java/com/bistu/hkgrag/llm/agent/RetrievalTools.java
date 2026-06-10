@@ -104,7 +104,18 @@ public class RetrievalTools {
             List<Map<String, Object>> resultList = new ArrayList<>();
             for (String name : names) {
                 if (StringUtils.hasText(name)) {
-                    List<Map<String, Object>> entityInfo = neo4jService.findAllNodeByName(name);
+                    List<DoEntity> vector_retrieval = entityService.hybridSearchEntityList(names, topK);
+
+                    if (vector_retrieval.isEmpty()) {
+                        log.info("对当前关键词[{}]进行向量检索为空", names.toString());
+                    }
+                    //获取相关实体id
+                    List<String> entityIds = vector_retrieval.stream()
+                            .map(DoEntity::getEntityId)
+                            .filter(Objects::nonNull)
+                            .toList();
+
+                    List<Map<String, Object>> entityInfo = neo4jService.findNodeByEntitiesId(entityIds);
                     if (entityInfo != null && entityInfo.size() > 0) {
                         resultList.addAll(entityInfo);
                     }
@@ -136,89 +147,89 @@ public class RetrievalTools {
         }
     }
 
-    @Tool(description = """
-        适用场景：
-        当问题查询的是人名、地名、机构名的相关资料、关联文件、属性说明、归属关系时调用。
-
-        该工具会：
-        1. 根据实体名称检索相关实体
-        2. 查找实体关联文档
-        3. 返回相关文件原文内容
-
-        适用于：
-        - 查询人物相关资料
-        - 查询项目相关文件
-        - 查询机构相关通知
-        - 查询某实体涉及的文档内容
-        """)
-    public RetrievalResult searchFileByEntity(@ToolParam(description = "问题分析智能体输出的关键词列表") List<String> keywords,
-                                              @ToolParam(description = """
-                                                      问题分析智能体的规划结果。
-                                                      请直接使用问题分析结果中的：
-                                                      - 用户问题/子问题
-                                                      正确示例：
-                                                      - 校史工作办公室的联系电话是多少
-                                                      错误示例：
-                                                      - 联系电话
-                                                      - 资金总额
-                                                      - 邮箱
-                                                      不要只传属性名称。
-                                                      """) String query) {
-        if (keywords == null || keywords.isEmpty()) {
-            log.error("关键词实体列表为空");
-            return null;
-        }
-        try{
-            log.info("智能体选择[searchFileByEntity]工具，待检索的关键词列表是[{}]",keywords);
-            //根据关键词在向量库中找相关实体
-            List<DoEntity> vector_retrieval = entityService.hybridSearchEntityList(keywords, topK);
-            if (vector_retrieval.isEmpty()) {
-                log.info("对当前关键词[{}]进行向量检索为空", keywords.toString());
-            }
-            //获取相关实体id
-            List<String> entityIds = vector_retrieval.stream()
-                    .map(DoEntity::getEntityId)
-                    .filter(Objects::nonNull)
-                    .toList();
-            //根据实体id列表找与之关联的文档节点及属性
-            List<Map<String, String>> relatedFiles = neo4jService.findFileByEntitiesId(entityIds);
-            //提取 所有文档的 id 列表
-            List<String> documentIds = relatedFiles.stream()
-                    .map(docMap -> docMap.get("id"))  // 从每个文档Map中取 id 字段
-                    .filter(Objects::nonNull)         // 过滤空值
-                    .distinct()
-                    .toList();
-            //在指定id范围内对文档内容和问题进行向量相似度排序 取出topK
-            List<DoFile> milvus_fileList = fileService.searchFilesByIds(query,documentIds,topK);
-            if(milvus_fileList.isEmpty()){
-                return null;
-            }
-            StringBuilder retrievalInfoSb = new StringBuilder();
-            for (int i = 0; i < milvus_fileList.size(); i++) {
-                DoFile doFile = milvus_fileList.get(i);
-                retrievalInfoSb.append("相关文档").append(i + 1).append("：\n")
-                        .append("文档名：").append(doFile.getFileName()).append("\n")
-                        .append("文档内容：").append(doFile.getContent()).append("\n\n");
-            }
-            String summary = "智能体使用[searchFileByEntity]工具，以[" + keywords + "]为查询参数，" + "检索到相关文件: " +
-                    milvus_fileList.stream()
-                            .map(DoFile::getFileName)
-                            .distinct()
-                            .reduce((a, b) -> a + ", " + b)
-                            .orElse("无");
-            String content = retrievalInfoSb.toString();
-            String evidenceId = evidenceStore.save(mapper.writeValueAsString(milvus_fileList));
-            return new RetrievalResult(
-                    evidenceId,
-                    summary,
-                    content
-            );
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error("工具[searchFileByEntity]调用失败", e.getMessage());
-            return null;
-        }
-    }
+//    @Tool(description = """
+//        适用场景：
+//        当问题查询的是人名、地名、机构名的相关资料、关联文件、属性说明、归属关系时调用。
+//
+//        该工具会：
+//        1. 根据实体名称检索相关实体
+//        2. 查找实体关联文档
+//        3. 返回相关文件原文内容
+//
+//        适用于：
+//        - 查询人物相关资料
+//        - 查询项目相关文件
+//        - 查询机构相关通知
+//        - 查询某实体涉及的文档内容
+//        """)
+//    public RetrievalResult searchFileByEntity(@ToolParam(description = "问题分析智能体输出的关键词列表") List<String> keywords,
+//                                              @ToolParam(description = """
+//                                                      问题分析智能体的规划结果。
+//                                                      请直接使用问题分析结果中的：
+//                                                      - 用户问题/子问题
+//                                                      正确示例：
+//                                                      - 校史工作办公室的联系电话是多少
+//                                                      错误示例：
+//                                                      - 联系电话
+//                                                      - 资金总额
+//                                                      - 邮箱
+//                                                      不要只传属性名称。
+//                                                      """) String query) {
+//        if (keywords == null || keywords.isEmpty()) {
+//            log.error("关键词实体列表为空");
+//            return null;
+//        }
+//        try{
+//            log.info("智能体选择[searchFileByEntity]工具，待检索的关键词列表是[{}]",keywords);
+//            //根据关键词在向量库中找相关实体
+//            List<DoEntity> vector_retrieval = entityService.hybridSearchEntityList(keywords, topK);
+//            if (vector_retrieval.isEmpty()) {
+//                log.info("对当前关键词[{}]进行向量检索为空", keywords.toString());
+//            }
+//            //获取相关实体id
+//            List<String> entityIds = vector_retrieval.stream()
+//                    .map(DoEntity::getEntityId)
+//                    .filter(Objects::nonNull)
+//                    .toList();
+//            //根据实体id列表找与之关联的文档节点及属性
+//            List<Map<String, String>> relatedFiles = neo4jService.findFileByEntitiesId(entityIds);
+//            //提取 所有文档的 id 列表
+//            List<String> documentIds = relatedFiles.stream()
+//                    .map(docMap -> docMap.get("id"))  // 从每个文档Map中取 id 字段
+//                    .filter(Objects::nonNull)         // 过滤空值
+//                    .distinct()
+//                    .toList();
+//            //在指定id范围内对文档内容和问题进行向量相似度排序 取出topK
+//            List<DoFile> milvus_fileList = fileService.searchFilesByIds(query,documentIds,topK);
+//            if(milvus_fileList.isEmpty()){
+//                return null;
+//            }
+//            StringBuilder retrievalInfoSb = new StringBuilder();
+//            for (int i = 0; i < milvus_fileList.size(); i++) {
+//                DoFile doFile = milvus_fileList.get(i);
+//                retrievalInfoSb.append("相关文档").append(i + 1).append("：\n")
+//                        .append("文档名：").append(doFile.getFileName()).append("\n")
+//                        .append("文档内容：").append(doFile.getContent()).append("\n\n");
+//            }
+//            String summary = "智能体使用[searchFileByEntity]工具，以[" + keywords + "]为查询参数，" + "检索到相关文件: " +
+//                    milvus_fileList.stream()
+//                            .map(DoFile::getFileName)
+//                            .distinct()
+//                            .reduce((a, b) -> a + ", " + b)
+//                            .orElse("无");
+//            String content = retrievalInfoSb.toString();
+//            String evidenceId = evidenceStore.save(mapper.writeValueAsString(milvus_fileList));
+//            return new RetrievalResult(
+//                    evidenceId,
+//                    summary,
+//                    content
+//            );
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            log.error("工具[searchFileByEntity]调用失败", e.getMessage());
+//            return null;
+//        }
+//    }
 
     @Tool(description = """
         当问题涉及：当用户问题涉及某一类相似事件、业务场景或主题相关文档时调用此工具。。
@@ -297,9 +308,8 @@ public class RetrievalTools {
     }
 
     @Tool(description = """
-            当用户提出问题时，可使用该工具进行基于语义的向量检索。
+            该方法可以优先使用。当用户提出问题时，可使用该工具进行基于语义的向量检索。
             该工具通过对用户问题进行语义理解，直接在知识库中检索最相关的文档内容。
-            该方法可以优先使用。
             该方法的参数query为用户的原始问题/子问题。
             
             适用于以下情况：

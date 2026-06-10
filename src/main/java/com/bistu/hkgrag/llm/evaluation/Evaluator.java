@@ -42,6 +42,13 @@ public class Evaluator {
                 )
         );
 
+        record.setRecall(
+                EvaluationUtils.recallScore(
+                        record.getPredAnswer(),
+                        record.getGoldAnswer()
+                )
+        );
+
         return record;
     }
 
@@ -97,10 +104,12 @@ public class Evaluator {
 
         Map<String,Double> rougeMap =
                 new HashMap<>();
+        Map<String, Double> recallMap = new HashMap<>();
 
         double totalEM = 0;
         double totalF1 = 0;
         double totalRouge = 0;
+        double totalRecall = 0;
 
         for(EvalRecord record : records){
 
@@ -130,9 +139,16 @@ public class Evaluator {
                             + record.getRougeL()
             );
 
+            recallMap.put(
+                    type,
+                    recallMap.getOrDefault(type, 0.0)
+                            + record.getRecall()
+            );
+
             totalEM += record.isEm()?1:0;
             totalF1 += record.getF1();
             totalRouge += record.getRougeL();
+            totalRecall += record.getRecall();
         }
 
         try(BufferedWriter writer =
@@ -179,6 +195,13 @@ public class Evaluator {
                 );
 
                 writer.write(
+                        String.format(
+                                "RECALL : %.4f\n",
+                                recallMap.get(type)/count
+                        )
+                );
+
+                writer.write(
                         "---------------------------\n"
                 );
             }
@@ -212,6 +235,13 @@ public class Evaluator {
                     String.format(
                             "ROUGE-L : %.4f\n",
                             totalRouge/records.size()
+                    )
+            );
+
+            writer.write(
+                    String.format(
+                            "RECALL : %.4f\n",
+                            totalRecall/records.size()
                     )
             );
         }

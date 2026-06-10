@@ -150,7 +150,7 @@ public class Neo4jService {
     }
 
     /**
-     * 根据id列表获取图片内对应节点及属性
+     * 根据id列表获取图谱内对应节点及属性
      * @param id 待检索id列表
      * @return
      */

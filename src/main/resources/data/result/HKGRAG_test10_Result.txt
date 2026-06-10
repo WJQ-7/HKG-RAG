@@ -1,0 +1,33 @@
+=========== RESULT ===========
+
+Type : SINGLE_HOP Count: 70
+EM : 0.0000
+F1 : 0.3281
+ROUGE-L : 0.3169
+RECALL : 0.9490
+---------------------------
+Type : SAME_DOC_Multi_HOP Count: 20
+EM : 0.0000
+F1 : 0.3596
+ROUGE-L : 0.2968
+RECALL : 0.8426
+---------------------------
+Type : SUMMARY_LEVEL Count: 10
+EM : 0.0000
+F1 : 0.2137
+ROUGE-L : 0.1539
+RECALL : 0.7140
+---------------------------
+Type : CROSS_DOC_Multi_HOP Count: 30
+EM : 0.0000
+F1 : 0.3355
+ROUGE-L : 0.3067
+RECALL : 0.8867
+---------------------------
+
+=========== OVERALL ===========
+测试集总数: 130
+EM : 0.0000
+F1 : 0.3259
+ROUGE-L : 0.2989
+RECALL : 0.9002

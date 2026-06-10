@@ -45,4 +45,9 @@ public class EvalRecord {
      */
     public double rougeL;
 
+    /**
+     * 模型答案在正确答案中匹配到的词数/正确答案总词数
+     */
+    public double recall;
+
 }
