@@ -50,7 +50,7 @@ public class MultiAgentTest {
     @Test
     public void testMultiAgent() {
 //        如何申请东方睿嬴（北京）软件技术有限公司”实习生职位以及联系方式是什么
-        String question="2016届毕业生个人档案成绩单应在什么时候开始打印？电话是多少？";
+        String question = "哪些校友企业招聘的岗位明确面向在校大学生或应届毕业生？ ";
         String finalAnswer=testMultiAgent.testMultiAgent(question);
         System.out.println(finalAnswer);
         Assertions.assertNotNull(finalAnswer);
@@ -58,8 +58,12 @@ public class MultiAgentTest {
 
     @Test
     public void testBaselineRag(){
-        String question="大学生暑期社会实践的主要主题是什么？";
-        String finalAnswer=baseLineService.baselineRAG(question).getAnswer();
+        String question = "评审委员会在同等学术水平下是否应优先考虑北京信息科技大学经济管理学院教师的丰耘青年教师优秀科研论文奖励基金申请？";
+        String finalAnswer=baseLineService.naiveRAG(question).getAnswer();
+        System.out.println(finalAnswer);
+        Assertions.assertNotNull(finalAnswer);
+
+        finalAnswer = testMultiAgent.testMultiAgent(question);
         System.out.println(finalAnswer);
         Assertions.assertNotNull(finalAnswer);
     }

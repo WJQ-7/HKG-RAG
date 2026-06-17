@@ -15,7 +15,7 @@ public class GenTestSetServiceTest {
     @Test
     public void test_genTestSet() {
         String inputPath = "src/main/resources/data/test.json";
-        String outputPath = "src/main/resources/data/qa_test_set7.jsonl";
+        String outputPath = "src/main/resources/data/qa_test_set8.jsonl";
         genTestSetService.GenTestSet(inputPath, outputPath);
     }
 }

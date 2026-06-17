@@ -7,283 +7,144 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Evaluator {
-    private final static Logger log= LoggerFactory.getLogger(Evaluator.class);
+    private final static Logger log = LoggerFactory.getLogger(Evaluator.class);
+
     /**
-     * 单条评估
-     * @param record 评估记录
-     * @return 带有结果的评估记录
+     * 一次遍历算出的汇总指标，消除外部重复计算
      */
-    public static EvalRecord evaluate(
-            EvalRecord record
-    ) {
-        record.setEm(
-                EvaluationUtils.exactMatch(
-                        record.getPredAnswer(),
-                        record.getGoldAnswer()
-                )
-        );
+    public record EvalSummary(
+            int totalCount,                                 // 总样本数
+            Map<String, Double> overall,                    // 整体: EM/F1/RougeL/Recall
+            Map<String, TypeScore> byType                   // 按类型: type -> {count, EM, F1, RougeL, Recall}
+    ) {}
 
-        record.setF1(
-                EvaluationUtils.f1Score(
-                        record.getPredAnswer(),
-                        record.getGoldAnswer()
-                )
-        );
+    public record TypeScore(int count, Map<String, Double> scores) {}
 
-        record.setRougeL(
-                EvaluationUtils.rougeL(
-                        record.getPredAnswer(),
-                        record.getGoldAnswer()
-                )
-        );
-
-        record.setRecall(
-                EvaluationUtils.recallScore(
-                        record.getPredAnswer(),
-                        record.getGoldAnswer()
-                )
-        );
-
+    /**
+     * 单条评估：计算所有指标并写回 record
+     */
+    public static EvalRecord evaluateOne(EvalRecord record) {
+        record.setEm(EvaluationUtils.exactMatch(record.getPredAnswer(), record.getGoldAnswer()));
+        record.setF1(EvaluationUtils.f1Score(record.getPredAnswer(), record.getGoldAnswer()));
+        record.setRougeL(EvaluationUtils.rougeL(record.getPredAnswer(), record.getGoldAnswer()));
+        record.setRecall(EvaluationUtils.recallScore(record.getPredAnswer(), record.getGoldAnswer()));
         return record;
     }
 
     /**
-     * 输出详细评估结果
-     * @param records 详细评估记录
-     * @param outputPath 输出路径
-     * @throws Exception 异常
+     * 对所有记录逐条评估，一次遍历生成汇总（消除重复遍历）
      */
-    public static void writeDetailResult(
-            List<EvalRecord> records,
-            String outputPath
-    ) throws Exception {
+    public static EvalSummary evaluateAll(List<EvalRecord> records) {
+        Map<String, Integer> countByType = new HashMap<>();
+        Map<String, double[]> sumByType = new HashMap<>(); // [EM, F1, RougeL, Recall]
 
-        ObjectMapper mapper =
-                new ObjectMapper();
+        double totalEM = 0, totalF1 = 0, totalRougeL = 0, totalRecall = 0;
 
-        try (BufferedWriter writer =
-                     new BufferedWriter(
-                             new FileWriter(outputPath)
-                     )) {
+        for (EvalRecord r : records) {
+            evaluateOne(r);
 
-            for (EvalRecord record : records) {
+            String type = r.getType().toString();
+            countByType.merge(type, 1, Integer::sum);
+            double[] sums = sumByType.computeIfAbsent(type, k -> new double[4]);
+            sums[0] += r.isEm() ? 1 : 0;
+            sums[1] += r.getF1();
+            sums[2] += r.getRougeL();
+            sums[3] += r.getRecall();
 
-                writer.write(
-                        mapper.writeValueAsString(record)
-                );
+            totalEM += r.isEm() ? 1 : 0;
+            totalF1 += r.getF1();
+            totalRougeL += r.getRougeL();
+            totalRecall += r.getRecall();
+        }
 
+        int n = records.size();
+
+        Map<String, Double> overall = buildScoreMap(totalEM / n, totalF1 / n, totalRougeL / n, totalRecall / n);
+
+        Map<String, TypeScore> byType = new LinkedHashMap<>();
+        for (String type : countByType.keySet()) {
+            int cnt = countByType.get(type);
+            double[] s = sumByType.get(type);
+            byType.put(type, new TypeScore(cnt, buildScoreMap(s[0] / cnt, s[1] / cnt, s[2] / cnt, s[3] / cnt)));
+        }
+
+        return new EvalSummary(n, overall, byType);
+    }
+
+    private static Map<String, Double> buildScoreMap(double em, double f1, double rougeL, double recall) {
+        Map<String, Double> m = new LinkedHashMap<>();
+        m.put("EM", em);
+        m.put("F1", f1);
+        m.put("RougeL", rougeL);
+        m.put("Recall", recall);
+        return m;
+    }
+
+    // ==================== 写入文件 ====================
+
+    public static void writeDetailResult(List<EvalRecord> records, String outputPath) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
+            for (EvalRecord r : records) {
+                writer.write(mapper.writeValueAsString(r));
                 writer.newLine();
             }
         }
     }
 
-    /**
-     * 对详细记录进行汇总并写入指定路径
-     * @param records 详细记录
-     * @param outputPath 总体结果输出路径
-     * @throws Exception
-     */
-    public static void writeSummaryResult(
-            List<EvalRecord> records,
-            String outputPath
-    ) throws Exception {
+    public static void writeSummaryResult(EvalSummary summary, String outputPath) throws Exception {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
+            writer.write("=========== RESULT ===========\n\n");
 
-        Map<String,Integer> countMap =
-                new HashMap<>();
-
-        Map<String,Double> emMap =
-                new HashMap<>();
-
-        Map<String,Double> f1Map =
-                new HashMap<>();
-
-        Map<String,Double> rougeMap =
-                new HashMap<>();
-        Map<String, Double> recallMap = new HashMap<>();
-
-        double totalEM = 0;
-        double totalF1 = 0;
-        double totalRouge = 0;
-        double totalRecall = 0;
-
-        for(EvalRecord record : records){
-
-            String type =
-                    record.getType().toString();
-
-            countMap.put(
-                    type,
-                    countMap.getOrDefault(type,0)+1
-            );
-
-            emMap.put(
-                    type,
-                    emMap.getOrDefault(type,0.0)
-                            + (record.isEm()?1:0)
-            );
-
-            f1Map.put(
-                    type,
-                    f1Map.getOrDefault(type,0.0)
-                            + record.getF1()
-            );
-
-            rougeMap.put(
-                    type,
-                    rougeMap.getOrDefault(type,0.0)
-                            + record.getRougeL()
-            );
-
-            recallMap.put(
-                    type,
-                    recallMap.getOrDefault(type, 0.0)
-                            + record.getRecall()
-            );
-
-            totalEM += record.isEm()?1:0;
-            totalF1 += record.getF1();
-            totalRouge += record.getRougeL();
-            totalRecall += record.getRecall();
-        }
-
-        try(BufferedWriter writer =
-                    new BufferedWriter(
-                            new FileWriter(outputPath)
-                    )){
-
-            writer.write(
-                    "=========== RESULT ===========\n\n"
-            );
-
-            for(String type : countMap.keySet()){
-
-                int count =
-                        countMap.get(type);
-
-                writer.write(
-                        String.format(
-                                "Type : %s Count: %d\n",
-                                type,
-                                count
-                        )
-                );
-
-                writer.write(
-                        String.format(
-                                "EM : %.4f\n",
-                                emMap.get(type)/count
-                        )
-                );
-
-                writer.write(
-                        String.format(
-                                "F1 : %.4f\n",
-                                f1Map.get(type)/count
-                        )
-                );
-
-                writer.write(
-                        String.format(
-                                "ROUGE-L : %.4f\n",
-                                rougeMap.get(type)/count
-                        )
-                );
-
-                writer.write(
-                        String.format(
-                                "RECALL : %.4f\n",
-                                recallMap.get(type)/count
-                        )
-                );
-
-                writer.write(
-                        "---------------------------\n"
-                );
+            for (Map.Entry<String, TypeScore> entry : summary.byType().entrySet()) {
+                String type = entry.getKey();
+                TypeScore ts = entry.getValue();
+                Map<String, Double> s = ts.scores();
+                writer.write(String.format("Type : %s Count: %d\n", type, ts.count()));
+                writer.write(String.format("EM : %.4f\n", s.get("EM")));
+                writer.write(String.format("F1 : %.4f\n", s.get("F1")));
+                writer.write(String.format("ROUGE-L : %.4f\n", s.get("RougeL")));
+                writer.write(String.format("RECALL : %.4f\n", s.get("Recall")));
+                writer.write("---------------------------\n");
             }
 
-            writer.write(
-                    "\n=========== OVERALL ===========\n"
-            );
-
-            writer.write(
-                    String.format(
-                            "测试集总数: %d\n",
-                            records.size()
-                    )
-            );
-
-            writer.write(
-                    String.format(
-                            "EM : %.4f\n",
-                            totalEM/records.size()
-                    )
-            );
-
-            writer.write(
-                    String.format(
-                            "F1 : %.4f\n",
-                            totalF1/records.size()
-                    )
-            );
-
-            writer.write(
-                    String.format(
-                            "ROUGE-L : %.4f\n",
-                            totalRouge/records.size()
-                    )
-            );
-
-            writer.write(
-                    String.format(
-                            "RECALL : %.4f\n",
-                            totalRecall/records.size()
-                    )
-            );
+            writer.write("\n=========== OVERALL ===========\n");
+            writer.write(String.format("测试集总数: %d\n", summary.totalCount()));
+            writer.write(String.format("EM : %.4f\n", summary.overall().get("EM")));
+            writer.write(String.format("F1 : %.4f\n", summary.overall().get("F1")));
+            writer.write(String.format("ROUGE-L : %.4f\n", summary.overall().get("RougeL")));
+            writer.write(String.format("RECALL : %.4f\n", summary.overall().get("Recall")));
         }
     }
 
-    /**
-     * 评估总方法
-     * 负责将模型回答后的记录进行评估并写入文件
-     * @param records 测试评估记录
-     * @param detailOutputPath 详细评估结果输出路径
-     * @param allOutputPath 总体评估结果输出路径
-     * @return
-     */
-    public static boolean evaluate(List<EvalRecord> records,
-                                   String detailOutputPath,
-                                   String allOutputPath
-    ) {
-        log.info("待评估[{}]条数据",records.size());
-        try {
+    // ==================== 总入口 ====================
 
-            // 1. 单条评估
-            for (EvalRecord record : records) {
-                evaluate(record);
-            }
+    /**
+     * 评估总方法：逐条评估 → 写详细文件 → 写汇总文件
+     * @return EvalSummary 供外部复用（消除重复计算）
+     */
+    public static EvalSummary evaluate(List<EvalRecord> records,
+                                       String detailOutputPath,
+                                       String summaryOutputPath) {
+        log.info("待评估[{}]条数据", records.size());
+        try {
+            EvalSummary summary = evaluateAll(records);
             log.info("所有记录评估完成");
-            // 2. 输出详细结果
+
             writeDetailResult(records, detailOutputPath);
             log.info("详细评估结果已写入: {}", detailOutputPath);
-            // 3. 输出汇总结果
-            writeSummaryResult(
-                    records,
-                    allOutputPath
-            );
-            log.info("汇总评估结果已写入: {}", allOutputPath);
+
+            writeSummaryResult(summary, summaryOutputPath);
+            log.info("汇总评估结果已写入: {}", summaryOutputPath);
             log.info("评估完成");
-            return true;
+            return summary;
+
         } catch (Exception e) {
-            e.printStackTrace();
-            log.error("评估失败{}", e.getMessage());
-            return false;
+            log.error("评估失败: {}", e.getMessage(), e);
+            return null;
         }
     }
-
-
 }

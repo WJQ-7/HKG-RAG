@@ -1,0 +1,26 @@
+==================== 四种 RAG 方法评估结果对比 ====================
+
+Method                  EM         F1     RougeL     Recall
+----------------------------------------------------------------
+BM25RAG             0.0000     0.3472     0.3146     0.7274
+NaiveRAG            0.0000     0.3404     0.3081     0.7027
+HybridRAG           0.0000     0.3476     0.3129     0.7236
+MultiAgent          0.0000     0.2468     0.2270     0.7589
+
+LeanRAG             0.0000     0.1086     0.0945     0.6005
+
+
+==================== 文件清单 ====================
+  BM25RAG_QA.jsonl       -> 原始问答记录
+  BM25RAG_Detail.jsonl    -> 逐条评估详情
+  BM25RAG_Summary.txt     -> 按类型汇总指标
+  NaiveRAG_QA.jsonl       -> 原始问答记录
+  NaiveRAG_Detail.jsonl    -> 逐条评估详情
+  NaiveRAG_Summary.txt     -> 按类型汇总指标
+  HybridRAG_QA.jsonl       -> 原始问答记录
+  HybridRAG_Detail.jsonl    -> 逐条评估详情
+  HybridRAG_Summary.txt     -> 按类型汇总指标
+  MultiAgent_QA.jsonl       -> 原始问答记录
+  MultiAgent_Detail.jsonl    -> 逐条评估详情
+  MultiAgent_Summary.txt     -> 按类型汇总指标
+  All_Methods_Comparison.txt -> 本文件（四种方法对比）

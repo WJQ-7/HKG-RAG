@@ -1,18 +1,22 @@
 package com.bistu.hkgrag.llm.evaluation;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.huaban.analysis.jieba.JiebaSegmenter;
+import com.huaban.analysis.jieba.SegToken;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class EvaluationUtils {
+    private static final JiebaSegmenter segmenter = new JiebaSegmenter();
+
     public EvaluationUtils() {
     }
 
     /**
-     * 文本归一化（文本分词）
-     * @param s 待分词文本
-     * @return 分词后文本
+     * 文本归一化：去除空白和标点
      */
     public static String normalize(String s) {
         if (s == null) {
@@ -21,6 +25,20 @@ public class EvaluationUtils {
         return s.replaceAll("\\s+", "")
                 .replaceAll("[，。,.、;；:：！？!]", "")
                 .trim();
+    }
+
+    /**
+     * 词级分词：使用 jieba 分词器
+     */
+    public static List<String> tokenize(String s) {
+        String text = normalize(s);
+        if (text.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return segmenter.process(text, JiebaSegmenter.SegMode.SEARCH)
+                .stream()
+                .map(t -> t.word)
+                .collect(Collectors.toList());
     }
 
 
@@ -32,12 +50,12 @@ public class EvaluationUtils {
     }
 
     /**
-     * 召回率 Recall = 重叠字符数 / 标准答案总字符数
+     * 召回率 Recall = 重叠词数 / 标准答案总词数
      * 衡量：标准答案里的内容，模型答案覆盖了多少
      */
     public static double recallScore(String pred, String gold) {
-        List<String> predList = Arrays.asList(normalize(pred).split(""));
-        List<String> goldList = Arrays.asList(normalize(gold).split(""));
+        List<String> predList = tokenize(pred);
+        List<String> goldList = tokenize(gold);
 
         // 边界：标准答案为空 或 预测为空
         if (goldList.isEmpty() || predList.isEmpty()) {
@@ -70,11 +88,9 @@ public class EvaluationUtils {
      * @return F1分数
      */
     public static double f1Score(String pred, String gold) {
-        List<String> predList =
-                Arrays.asList(normalize(pred).split(""));
+        List<String> predList = tokenize(pred);
+        List<String> goldList = tokenize(gold);
 
-        List<String> goldList =
-                Arrays.asList(normalize(gold).split(""));
         if (predList.isEmpty() || goldList.isEmpty()) {
             return 0.0;
         }
@@ -157,11 +173,8 @@ public class EvaluationUtils {
             String gold
     ) {
 
-        List<String> predictionTokens =
-                Arrays.asList(normalize(prediction).split(""));
-
-        List<String> goldTokens =
-                Arrays.asList(normalize(gold).split(""));
+        List<String> predictionTokens = tokenize(prediction);
+        List<String> goldTokens = tokenize(gold);
 
         if (predictionTokens.isEmpty()
                 || goldTokens.isEmpty()) {
@@ -232,6 +245,37 @@ public class EvaluationUtils {
         scoreMap.put("overall", avgOverall);
 
         return scoreMap;
+    }
+
+
+    /**
+     * 将各方法的 overall 指标写入对比表格
+     */
+    public static void writeComparisonTable(Map<String, Map<String, Double>> allScores, String outputPath) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
+            writer.write("==================== 四种 RAG 方法评估结果对比 ====================\n\n");
+
+            String header = String.format("%-15s %10s %10s %10s %10s", "Method", "EM", "F1", "RougeL", "Recall");
+            writer.write(header);
+            writer.newLine();
+            writer.write("----------------------------------------------------------------\n");
+
+            for (Map.Entry<String, Map<String, Double>> entry : allScores.entrySet()) {
+                Map<String, Double> s = entry.getValue();
+                writer.write(String.format("%-15s %10.4f %10.4f %10.4f %10.4f",
+                        entry.getKey(), s.get("EM"), s.get("F1"), s.get("RougeL"), s.get("Recall")));
+                writer.newLine();
+            }
+
+            writer.newLine();
+            writer.write("==================== 文件清单 ====================\n");
+            for (String method : allScores.keySet()) {
+                writer.write("  " + method + "_QA.jsonl       -> 原始问答记录\n");
+                writer.write("  " + method + "_Detail.jsonl    -> 逐条评估详情\n");
+                writer.write("  " + method + "_Summary.txt     -> 按类型汇总指标\n");
+            }
+            writer.write("  All_Methods_Comparison.txt -> 本文件（四种方法对比）\n");
+        }
     }
 
 }

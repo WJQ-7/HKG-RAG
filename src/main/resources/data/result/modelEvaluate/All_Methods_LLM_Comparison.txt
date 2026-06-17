@@ -1,0 +1,23 @@
+==================== 四种 RAG 方法 LLM 评估结果对比 ====================
+
+Method           Correctness      Comprehensiveness  Diversity    Overall
+-----------------------------------------------------------------------------------
+BM25RAG                 6.60                   6.51       6.15       6.42
+NaiveRAG                6.56                   6.54       6.08       6.37
+HybridRAG               6.56                   6.51       6.06       6.32
+MultiAgent              7.21                   7.15       6.65       6.94
+
+LeanRAG                 3.43                   3.51      3.44       3.38
+==================== 文件清单 ====================
+  BM25RAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  BM25RAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  NaiveRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  NaiveRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  HybridRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  HybridRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  MultiAgent_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  MultiAgent_LLMAssess_result.jsonl  -> LLM 评分汇总
+  All_Methods_LLM_Comparison.txt -> 本文件（四种方法 LLM 评分对比）
+
+  使用模型：deepseekV4
+{"correctness":3.43,"diversity":3.505,"contentComprehensiveness":3.445,"overall":3.38}

@@ -38,7 +38,7 @@ public class GenTestSetService {
     //跨文档问题数量
     private static final int CROSS_DOC_Multi_HOP = 40;
     //主题级问题数量
-    private static final int SUMMARY_LEVEL = 200;
+    private static final int SUMMARY_LEVEL = 20;
 
     // 从500篇里只随机选 20 篇给模型生成问题 ✅
     private static final int SAMPLE_DOC_COUNT = 20;
@@ -70,11 +70,11 @@ public class GenTestSetService {
             Random random = new Random();
 //
 //            // ========= 1. 单跳 =========
-            BeanOutputConverter<TestSetListResult> testSetConverter = new BeanOutputConverter<>(TestSetListResult.class);
-            OpenAiChatOptions options = OpenAiChatOptions.builder()
-                    .temperature(0.1)
-                    .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverter.getJsonSchema()))
-                    .build();
+//            BeanOutputConverter<TestSetListResult> testSetConverter = new BeanOutputConverter<>(TestSetListResult.class);
+//            OpenAiChatOptions options = OpenAiChatOptions.builder()
+//                    .temperature(0.1)
+//                    .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverter.getJsonSchema()))
+//                    .build();
 //            //单跳问题计数
 //            int singleCount = 0;
 //            for (int i = 0; i < SINGLE_HOP; i++) {
@@ -241,6 +241,7 @@ public class GenTestSetService {
             int topicLevelCount = 0;
             // 1. 获取所有主题聚类节点
             List<Map<String, String>> clusterNodeList = neo4jService.findNodeByLabel("主题聚类节点");
+            GeneratedQuestions topicResult = new GeneratedQuestions();
             log.info("获取到有效主题数量：{}", clusterNodeList.size());
             for (int i = 0; i < Math.min(SUMMARY_LEVEL, clusterNodeList.size()); i++) {
                 // 随机抽取一个主题
@@ -256,7 +257,9 @@ public class GenTestSetService {
                 List<String> topicDocIds = docNodes.stream()
                         .map(node -> node.get("id"))
                         .collect(Collectors.toList());
-
+                if(topicDocIds.size() <= 1) {
+                    continue;
+                }
                 // 查询完整文档内容
                 List<DoFile> topicDocs = fileService.getFilesById(topicDocIds);
 
@@ -273,24 +276,43 @@ public class GenTestSetService {
 
                 // 调用主题级生成模板
                 String topicPrompt = String.format(PromptTemplates.Generation_SUMMARY_LEVEL, promptSb.toString());
+                BeanOutputConverter<GeneratedQuestions> testSetConverter = new BeanOutputConverter<>(GeneratedQuestions.class);
+                OpenAiChatOptions options = OpenAiChatOptions.builder()
+                        .temperature(0.1)
+                        .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverter.getJsonSchema()))
+                        .build();
 
                 // 调用大模型
-                TestSetListResult topicResult = chatClient.prompt()
+                topicResult = chatClient.prompt()
                         .user(topicPrompt)
                         .options(options)
                         .call()
-                        .entity(TestSetListResult.class);
+                        .entity(GeneratedQuestions.class);
 
                 // 组装 TestSet
-                for (TestSetResult item : topicResult.testSetResultList()) {
-                    TestSet testSet = new TestSet();
-                    testSet.setFileId(String.join(",", topicDocIds)); // 保存该主题下所有文档ID
-                    testSet.setType(TestSet.Type.SUMMARY_LEVEL); // 新增类型
-                    testSet.setQuestion(item.question());
-                    testSet.setAnswer(item.answer());
-                    testSet.setAccording(item.according());
-                    testSets.add(testSet);
-                    topicLevelCount++;
+//                for (TestSetResult item : topicResult.testSetResultList()) {
+//                    TestSet testSet = new TestSet();
+//                    testSet.setFileId(String.join(",", topicDocIds)); // 保存该主题下所有文档ID
+//                    testSet.setType(TestSet.Type.SUMMARY_LEVEL); // 新增类型
+//                    testSet.setQuestion(item.question());
+//                    testSet.setAnswer(item.answer());
+//                    testSet.setAccording(item.according());
+//                    testSets.add(testSet);
+//                    topicLevelCount++;
+//                }
+                for (GeneratedQuestions.User user : topicResult.users) {
+                    for (GeneratedQuestions.Task task : user.tasks) {
+                        for (GeneratedQuestions.QAPair qa : task.questions) {
+                            TestSet testSet = new TestSet();
+                            testSet.setFileId(String.join(",", topicDocIds));
+                            testSet.setType(TestSet.Type.SUMMARY_LEVEL);
+                            testSet.setQuestion(qa.question);
+                            testSet.setAnswer(qa.answer);
+                            testSet.setAccording(qa.according);
+                            testSets.add(testSet);
+                            topicLevelCount++;
+                        }
+                    }
                 }
 
                 log.info("主题级进度：{}% ({}/{})",
@@ -298,6 +320,7 @@ public class GenTestSetService {
                 TextUtils.printProgress(i + 1, SUMMARY_LEVEL, "主题级生成进度");
             }
             log.info("主题级问题生成完成，数量：{}", topicLevelCount);
+            log.info("生成结果",topicResult);
 
             // 写文件
              TextUtils.writeJsonl(outputPath, testSets);
@@ -312,5 +335,45 @@ public class GenTestSetService {
 
     }
 
+    public static class GeneratedQuestions {
+        private List<User> users;
 
+        public List<User> getUsers() { return users; }
+        public void setUsers(List<User> users) { this.users = users; }
+
+        public static class User {
+            private String description;
+            private List<Task> tasks;
+
+            public String getDescription() { return description; }
+            public void setDescription(String d) { this.description = d; }
+            public List<Task> getTasks() { return tasks; }
+            public void setTasks(List<Task> t) { this.tasks = t; }
+        }
+
+        public static class Task {
+            private String description;
+            private List<QAPair> questions;
+
+            public String getDescription() { return description; }
+            public void setDescription(String d) { this.description = d; }
+            public List<QAPair> getQuestions() { return questions; }
+            public void setQuestions(List<QAPair> q) { this.questions = q; }
+        }
+
+        public static class QAPair {
+            private String fileId;
+            private String question;
+            private String answer;
+            private String according;
+            public String getFileId() { return fileId; }
+            public void setFileId(String f) { this.fileId = f; }
+            public String getQuestion() { return question; }
+            public void setQuestion(String q) { this.question = q; }
+            public String getAnswer() { return answer; }
+            public void setAnswer(String a) { this.answer = a; }
+            public String getAccording() { return according; }
+            public void setAccording(String a) { this.according = a; }
+        }
+    }
 }

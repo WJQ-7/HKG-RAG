@@ -276,6 +276,7 @@ public class RetrievalTools {
                     .distinct()
                     .toList();
             //3.根据文件id在File向量表中找
+            //TODO 问题：这里会退化回问题匹配
             List<DoFile> topicRelatedFileList = fileService.searchFilesByIds(query,topicRelatedDocIds,topK);
             if(topicRelatedFileList.isEmpty()){
                 return null;
