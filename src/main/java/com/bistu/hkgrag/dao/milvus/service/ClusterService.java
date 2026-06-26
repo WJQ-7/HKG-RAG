@@ -34,7 +34,8 @@ import java.util.stream.IntStream;
 @Slf4j
 public class ClusterService {
     //定义file表
-    private static final String COLLECTION_NAME = "cluster";
+    @Value("${HKG-RAG.milvus.Cluster-Collection}")
+    private String COLLECTION_NAME = "cluster";
     //定义向量维度
     private static final int VECTOR_DIM = 2560;
     private final MilvusClientV2 client;

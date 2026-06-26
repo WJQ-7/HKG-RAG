@@ -56,7 +56,7 @@ public class ExtractionServiceTest {
     public void test_topicCluster(){
         String inputPath="src/main/resources/data/chunk_topic.jsonl";
         String outputPath="src/main/resources/data";
-        clusterService.topicCluster(inputPath, outputPath);
+        clusterService.topicClusterV2(inputPath, outputPath);
     }
 
 

@@ -1,10 +1,9 @@
 package com.bistu.hkgrag.llm.service;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
-import com.bistu.hkgrag.dao.neo4j.model.Triple;
-import com.bistu.hkgrag.llm.model.extraction.Entity;
+import com.bistu.hkgrag.dao.neo4j.model.Entity;
+import com.bistu.hkgrag.dao.neo4j.model.Relation;
 import com.bistu.hkgrag.llm.model.extraction.EntityResult;
-import com.bistu.hkgrag.llm.model.extraction.Relation;
 import com.bistu.hkgrag.llm.model.extraction.RelationResult;
 import com.bistu.hkgrag.llm.utils.PromptTemplates;
 import com.bistu.hkgrag.preprocess.utils.TextUtils;
@@ -22,22 +21,24 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Service
 public class ExtractionService {
     private static Logger log = LoggerFactory.getLogger(ExtractionService.class);
+    private static final long LLM_TIMEOUT_MINUTES = 4;
     private final ChatClient chatClient;
-
     private final ObjectMapper objectMapper;
+    private final DedupService dedupService;
 
     public ExtractionService(@Autowired ObjectMapper objectMapper,
-                             @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient) {
+                             @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient,
+                             @Autowired DedupService dedupService) {
 
         this.objectMapper = objectMapper;
         this.chatClient = chatClient;
+        this.dedupService = dedupService;
     }
 
     public void entitiesAndRelationExtractionMultiThread(String inputPath, String outputPath) {
@@ -52,75 +53,17 @@ public class ExtractionService {
 
         // 重试队列
         Queue<DoFile> retryQueue = new ConcurrentLinkedQueue<>();
-        //设置写文件的实体和关系队列
-        BlockingQueue<List<Triple>> entityQueue = new LinkedBlockingQueue<>();
-        BlockingQueue<List<Triple>> relationQueue = new LinkedBlockingQueue<>();
 
-        AtomicBoolean running = new AtomicBoolean(true);
+        // 全局收集（全部使用 Neo4j model）
+        List<Entity> allRawEntities = Collections.synchronizedList(new ArrayList<>());
+        List<Entity> allDocEntities = Collections.synchronizedList(new ArrayList<>());
+        // 每个 chunk 内的实体间关系（用实体名称标识，消歧后合并）
+        List<Relation> allRawRelations = Collections.synchronizedList(new ArrayList<>());
 
-        Thread writerThread = new Thread(() -> {
-
-            List<Triple> entityBuffer = new ArrayList<>();
-            List<Triple> relationBuffer = new ArrayList<>();
-            int batchSize = 100;
-
-            try {
-                while (running.get()
-                        || !entityQueue.isEmpty()
-                        || !relationQueue.isEmpty()) {
-
-                    try {
-                        List<Triple> e = entityQueue.poll(200, TimeUnit.MILLISECONDS);
-                        if (e != null) entityBuffer.addAll(e);
-
-                        List<Triple> r = relationQueue.poll(200, TimeUnit.MILLISECONDS);
-                        if (r != null) relationBuffer.addAll(r);
-
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                    }
-
-                    // =========================
-                    // batch flush
-                    // =========================
-                    if (entityBuffer.size() >= batchSize) {
-                        TextUtils.writeJsonlAppend(
-                                outputPath + "/all_entities.jsonl",
-                                entityBuffer
-                        );
-                        entityBuffer.clear();
-                    }
-
-                    if (relationBuffer.size() >= batchSize) {
-                        TextUtils.writeJsonlAppend(
-                                outputPath + "/all_relations.jsonl",
-                                relationBuffer
-                        );
-                        relationBuffer.clear();
-                    }
-                }
-
-                // =========================
-                // 最终 flush
-                // =========================
-                if (!entityBuffer.isEmpty()) {
-                    TextUtils.writeJsonlAppend(outputPath + "/all_entities.jsonl", entityBuffer);
-                }
-
-                if (!relationBuffer.isEmpty()) {
-                    TextUtils.writeJsonlAppend(outputPath + "/all_relations.jsonl", relationBuffer);
-                }
-
-            } catch (Exception e) {
-                log.error("写线程异常", e);
-            }
-
-        }, "writer-thread");
-
-        writerThread.start();
 
         try {
-            List<DoFile> fileList = TextUtils.readJson(inputPath);
+//            List<DoFile> fileList = TextUtils.readJsonlToList(inputPath, DoFile.class);
+            List<DoFile> fileList = TextUtils.readJsonlToList(inputPath, DoFile.class);
             //if (fileList.size() >= 500) fileList = fileList.subList(0, 10);
             log.info("共需要处理[{}]个文档分块", fileList.size());
 
@@ -130,7 +73,7 @@ public class ExtractionService {
             int total = fileList.size();
 
             // =========================
-            // 🚀 主流程
+            // 🚀 Phase 1: 每个 chunk 抽取实体 + 同 chunk 内实体间关系
             // =========================
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (DoFile file : fileList) {
@@ -139,19 +82,7 @@ public class ExtractionService {
                     try {
                         mainSemaphore.acquire();
                         try {
-                            List<Triple> tempFiles = new ArrayList<>();
-                            List<Triple> tempEntities = new ArrayList<>();
-                            List<Triple> tempRelations = new ArrayList<>();
-                            processSingleFile(file, tempFiles, tempEntities, tempRelations, new HashMap<>());
-
-                            List<Triple> combined = new ArrayList<>();
-                            combined.addAll(tempFiles);
-                            combined.addAll(tempEntities);
-
-                            // 放入队列，由写线程统一写入
-                            entityQueue.offer(combined);
-                            relationQueue.offer(tempRelations);
-
+                            processSingleFile(file, allRawEntities, allDocEntities, allRawRelations);
                             success = true;
                         } finally {
                             mainSemaphore.release();
@@ -163,7 +94,7 @@ public class ExtractionService {
 
                     if (success) successCount.incrementAndGet();
                     int current = processedCount.incrementAndGet();
-                    log.info("[主流程] 进度：{}/{} | 成功：{} | 待重试：{}",
+                    log.info("[Phase 1] 进度：{}/{} | 成功：{} | 待重试：{}",
                             current, total, successCount.get(), retryQueue.size());
                     log.info("文档[{}]处理完成", file.getChunkId());
 
@@ -173,7 +104,8 @@ public class ExtractionService {
 
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             log.info("==================================================");
-            log.info("✅ 主流程全部完成！成功：{} | 待重试：{}", successCount.get(), retryQueue.size());
+            log.info("✅ Phase 1 完成！成功：{} | 待重试：{} | 原始关系数：{}",
+                    successCount.get(), retryQueue.size(), allRawRelations.size());
             log.info("==================================================");
 
             executor.shutdown();
@@ -193,7 +125,6 @@ public class ExtractionService {
                         new LinkedBlockingQueue<>(retryTotal * 2),
                         new ThreadPoolExecutor.CallerRunsPolicy()
                 );
-                //重试信号量
                 Semaphore retrySemaphore = new Semaphore(5);
                 AtomicInteger retryProcessed = new AtomicInteger(0);
                 List<CompletableFuture<Void>> retryFutures = new ArrayList<>();
@@ -206,18 +137,7 @@ public class ExtractionService {
                             try {
                                 retrySemaphore.acquire();
                                 try {
-                                    List<Triple> tempFiles = new ArrayList<>();
-                                    List<Triple> tempEntities = new ArrayList<>();
-                                    List<Triple> tempRelations = new ArrayList<>();
-
-                                    processSingleFile(file, tempFiles, tempEntities, tempRelations, new HashMap<>());
-
-                                    List<Triple> combined = new ArrayList<>();
-                                    combined.addAll(tempFiles);
-                                    combined.addAll(tempEntities);
-
-                                    entityQueue.offer(combined);
-                                    relationQueue.offer(tempRelations);
+                                    processSingleFile(file, allRawEntities, allDocEntities, allRawRelations);
                                     success = true;
                                     break;
                                 } finally {
@@ -257,11 +177,61 @@ public class ExtractionService {
             }
 
             // =========================
-            // ✅ 安全关闭写线程
+            // 🔬 Phase 2: 全局消歧去重
             // =========================
-            running.set(false);
-            writerThread.interrupt();
-            writerThread.join(30000); // 最多等30秒确保写完
+            log.info("==================================================");
+            log.info("🔬 Phase 2: 开始全局实体消歧去重，原始实体数: {}", allRawEntities.size());
+            List<Entity> dedupEntities = dedupService.deduplicate(allRawEntities);
+            log.info("🔬 消歧后实体数: {}", dedupEntities.size());
+
+            // =========================
+            // 🔬 Phase 2.5: 对去重后拼接的描述进行 LLM 精炼总结
+            // =========================
+            dedupEntities = refineEntityDescriptions(dedupEntities);
+            log.info("🔬 描述精炼后内容实体数: {}", dedupEntities.size());
+
+            // =========================
+            // 🔬 Phase 2.6: 合并同一文档多个chunk的文档实体（同一fileId只保留一个）
+            // =========================
+            List<Entity> mergedDocEntities = mergeDocEntities(allDocEntities);
+            log.info("🔬 文档实体合并后数量: {}", mergedDocEntities.size());
+
+            // 构建 entityName → entityId 映射
+            Map<String, String> nameToIdMap = dedupService.buildNameToIdMap(dedupEntities);
+
+            // =========================
+            // 🔗 Phase 3: 消歧后合并关系 + 建立文档-实体包含关系
+            // =========================
+            log.info("==================================================");
+            log.info("🔗 Phase 3: 合并关系，原始关系数: {}", allRawRelations.size());
+
+            // 3.1 实体间关系：用消歧后的 entityId 替换 sourceName/targetName（名称不变），合并重复关系
+            List<Relation> mergedRelations = mergeRelationsAfterDedup(allRawRelations, nameToIdMap);
+            log.info("🔗 实体间关系合并后: {}", mergedRelations.size());
+
+            // 3.2 文档-实体包含关系
+            List<Relation> docRelations = buildDocEntityRelations(allRawEntities, nameToIdMap);
+            log.info("🔗 文档-实体包含关系: {}", docRelations.size());
+
+            // 合并所有关系
+            List<Relation> allRelations = new ArrayList<>();
+            allRelations.addAll(mergedRelations);
+            allRelations.addAll(docRelations);
+            log.info("🔗 Phase 3 完成，总关系数: {}", allRelations.size());
+
+            // =========================
+            // 📝 写入 JSONL（全部用 Neo4j model）
+            // =========================
+            List<Entity> allEntities = new ArrayList<>();
+            allEntities.addAll(mergedDocEntities);
+            allEntities.addAll(dedupEntities);
+
+            TextUtils.writeJsonl(outputPath + "/all_entities.jsonl", allEntities);
+            TextUtils.writeJsonl(outputPath + "/all_relations.jsonl", allRelations);
+
+            log.info("📝 实体写入完成: {} (文档属性: {}, 内容实体: {})",
+                    allEntities.size(), mergedDocEntities.size(), dedupEntities.size());
+            log.info("📝 关系写入完成: {}", allRelations.size());
 
             // =========================
             // 📊 最终统计
@@ -274,45 +244,36 @@ public class ExtractionService {
             log.info("最终成功：{}", successCount.get());
             log.info("最终失败：{}", failCount.get());
             log.info("成功率：{}%", String.format("%.2f", successCount.get() * 100.0 / total));
+            log.info("消歧前实体数：{}", allRawEntities.size());
+            log.info("消歧后实体数：{}", dedupEntities.size());
+            log.info("关系数：{}", allRelations.size());
             log.info("========================================================");
 
         } catch (Exception e) {
             log.error("实体关系抽取任务执行异常", e);
-            try {
-                writerThread.interrupt();
-                writerThread.join(10000);
-            } catch (Exception ex) {
-                log.error("关闭写线程失败", ex);
-            }
         }
     }
 
 
     /**
-     * 单个文档处理逻辑封装
-     */
-    /**
-     * @param file
-     * @param totalFiles
-     * @param totalEntities
-     * @param totalRelations
-     * @param subjectToIdMap
-     * @throws Exception
+     * 单个 chunk 的抽取逻辑（Phase 1）：
+     * 1. 抽取文档属性实体 → Neo4j Entity（文档维度，不需要消歧）
+     * 2. 抽取内容实体 → Neo4j Entity（收集到全局，后续消歧）
+     * 3. 抽取同 chunk 内内容实体间关系 → Neo4j Relation（用实体名称标识，消歧后合并）
+     *
+     * @param file              当前 chunk
+     * @param allRawEntities    全局原始实体收集（Neo4j Entity）
+     * @param allDocEntities    全局文档属性实体收集（Neo4j Entity）
+     * @param allRawRelations   全局原始关系收集（Neo4j Relation，用实体名称标识）
      */
     private void processSingleFile(DoFile file,
-                                   Collection<Triple> totalFiles,
-                                   Collection<Triple> totalEntities,
-                                   Collection<Triple> totalRelations,
-                                   Map<String, String> subjectToIdMap) throws Exception {
-        // 🚧 使用临时集合，保证原子性
-        List<Triple> tempFiles = new ArrayList<>();
-        List<Triple> tempEntities = new ArrayList<>();
-        List<Triple> tempRelations = new ArrayList<>();
+                                   List<Entity> allRawEntities,
+                                   List<Entity> allDocEntities,
+                                   List<Relation> allRawRelations) throws Exception {
 
-        log.info("正在处理文件[{}]", file.getChunkId());
-        Map<String, String> tempSubjectToIdMap = new HashMap<>();
+        log.info("正在处理文件chunkId:[{}]", file.getChunkId());
 
-//        // 1️⃣ 提取文档实体
+        // ========== 1️⃣ 抽取文档节点 ==========
         String file_Node_prompt = String.format(PromptTemplates.File_Node_Extraction, file.getFileName(), file.getContent());
         BeanOutputConverter<EntityResult> fileEntityConverter = new BeanOutputConverter<>(EntityResult.class);
         OpenAiChatOptions options = OpenAiChatOptions.builder()
@@ -320,379 +281,357 @@ public class ExtractionService {
                 .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, fileEntityConverter.getJsonSchema()))
                 .build();
 
-        EntityResult entityResult = chatClient.prompt()
-                .user(file_Node_prompt)
-                .options(options)
-                .call()
-                .entity(EntityResult.class);
+        EntityResult docEntityResult = CompletableFuture
+                .supplyAsync(() -> chatClient.prompt()
+                        .user(file_Node_prompt)
+                        .options(options)
+                        .call()
+                        .entity(EntityResult.class))
+                .orTimeout(LLM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .join();
 
-        for (Entity fileEntity : entityResult.EntityList()) {
-            Triple fileTriple = new Triple();
-            fileTriple.setId(UUID.randomUUID().toString());
-            fileTriple.setSubjectId(file.getFileId());
-            fileTriple.setSubject(fileEntity.subject());
-            fileTriple.setPredicate(fileEntity.predicate());
-            fileTriple.setObject(fileEntity.object());
-            fileTriple.setType(Triple.Type.PROPERTY);
-            fileTriple.setSubjectType("文档");
-            tempFiles.add(fileTriple);
+        // 将文档映射为 Neo4j Entity 节点
+        if (docEntityResult != null && docEntityResult.entityList() != null && !docEntityResult.entityList().isEmpty()) {
+            com.bistu.hkgrag.llm.model.extraction.Entity docEntity = docEntityResult.entityList().get(0);
+            Entity neoDocEntity = new Entity();
+            neoDocEntity.setEntityId(file.getFileId());
+            neoDocEntity.setEntityName(docEntity.entityName());
+            neoDocEntity.setNodeType(Entity.Type.DOCUMENT_ENTITY);
+            neoDocEntity.setEntityType(docEntity.entityType());
+            neoDocEntity.setEntityDescription(docEntity.entityDescription());
+            neoDocEntity.setEntityInfo(docEntity.entityInfo());
+            neoDocEntity.setFileId(file.getFileId());
+            neoDocEntity.setChunkId(file.getChunkId());
+            allDocEntities.add(neoDocEntity);
         }
 
-        // 2️⃣ 提取文档内容实体
-        String file_Extraction_prompt = String.format(PromptTemplates.Content_Entity_Extraction, file.getContent());
-        entityResult = chatClient.prompt().user(file_Extraction_prompt).options(options).call().entity(EntityResult.class);
+        // ========== 2️⃣ 抽取内容实体 ==========
+        String content_Extraction_prompt = String.format(PromptTemplates.Content_Entity_Extraction, file.getContent());
+        BeanOutputConverter<EntityResult> contentEntityConverter = new BeanOutputConverter<>(EntityResult.class);
+        OpenAiChatOptions contentOptions = OpenAiChatOptions.builder()
+                .temperature(0.3)
+                .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, contentEntityConverter.getJsonSchema()))
+                .build();
 
-        List<Triple> contentEntityTriples = new ArrayList<>();
-        for (Entity contentEntity : entityResult.EntityList()) {
-            Triple contentTriple = new Triple();
-            contentTriple.setId(UUID.randomUUID().toString());
-            contentTriple.setSubject(contentEntity.subject());
-            contentTriple.setPredicate(contentEntity.predicate());
-            contentTriple.setObject(contentEntity.object());
-            contentTriple.setType(Triple.Type.PROPERTY);
-            contentTriple.setSubjectType(contentEntity.subjectType());
+        EntityResult contentEntityResult = CompletableFuture
+                .supplyAsync(() -> chatClient.prompt()
+                        .user(content_Extraction_prompt)
+                        .options(contentOptions)
+                        .call()
+                        .entity(EntityResult.class))
+                .orTimeout(LLM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .join();
 
-            String subject = contentEntity.subject();
-            String subjectId = tempSubjectToIdMap.computeIfAbsent(subject, k -> UUID.randomUUID().toString());
-            contentTriple.setSubjectId(subjectId);
+        List<com.bistu.hkgrag.llm.model.extraction.Entity> chunkEntities = contentEntityResult.entityList();
 
-            contentEntityTriples.add(contentTriple);
-            tempEntities.add(contentTriple);
+        // 收集到全局原始实体列表（待消歧）：extraction record → Neo4j Entity
+        for (com.bistu.hkgrag.llm.model.extraction.Entity e : chunkEntities) {
+            Entity neoEntity = new Entity();
+            neoEntity.setEntityId(UUID.randomUUID().toString());
+            neoEntity.setEntityName(e.entityName().trim());
+            neoEntity.setEntityType(e.entityType());
+            neoEntity.setEntityDescription(e.entityDescription());
+            neoEntity.setEntityInfo(e.entityInfo());
+            neoEntity.setNodeType(Entity.Type.CONTENT_ENTITY);
+            neoEntity.setFileId(file.getFileId());
+            neoEntity.setChunkId(file.getChunkId());
+            allRawEntities.add(neoEntity);
         }
 
-        // 3️⃣ 建立文档-内容实体关系
-        Map<String, Object> docIndex = new HashMap<>();
-        docIndex.put("fileId", file.getFileId());
-        docIndex.put("fileName", file.getFileName());
+        // ========== 2.5️⃣ Gleaning：补充遗漏实体 ==========
+        List<com.bistu.hkgrag.llm.model.extraction.Entity> gleanEntities = gleanMissingEntities(
+                file.getContent(), chunkEntities);
+        for (com.bistu.hkgrag.llm.model.extraction.Entity e : gleanEntities) {
+            Entity neoEntity = new Entity();
+            neoEntity.setEntityId(UUID.randomUUID().toString());
+            neoEntity.setEntityName(e.entityName().trim());
+            neoEntity.setEntityType(e.entityType());
+            neoEntity.setEntityDescription(e.entityDescription());
+            neoEntity.setEntityInfo(e.entityInfo());
+            neoEntity.setNodeType(Entity.Type.CONTENT_ENTITY);
+            neoEntity.setFileId(file.getFileId());
+            neoEntity.setChunkId(file.getChunkId());
+            allRawEntities.add(neoEntity);
+            chunkEntities.add(e);
+        }
+        if (!gleanEntities.isEmpty()) {
+            log.info("🔍 Gleaning 补充遗漏实体 {} 个: chunkId={}", gleanEntities.size(), file.getChunkId());
+        }
+
+        // 构建实体索引列表（用于 LLM 抽取实体间关系）
+        if (chunkEntities.isEmpty()) return;
 
         List<Map<String, Object>> entityIndexList = new ArrayList<>();
-        Map<String, Map<String, Object>> entityIndexMap = new HashMap<>();
-        for (Triple t : contentEntityTriples) {
-            if (!entityIndexMap.containsKey(t.getSubjectId())) {
-                Map<String, Object> e = new HashMap<>();
-                e.put("id", t.getSubjectId());
-                e.put("name", t.getSubject());
-                e.put("type", t.getSubjectType());
-                entityIndexMap.put(t.getSubjectId(), e);
-            }
+        for (com.bistu.hkgrag.llm.model.extraction.Entity e : chunkEntities) {
+            Map<String, Object> indexEntry = new HashMap<>();
+            indexEntry.put("name", e.entityName().trim());
+            indexEntry.put("type", e.entityType());
+            indexEntry.put("description", e.entityDescription());
+            indexEntry.put("info", e.entityInfo());
+            entityIndexList.add(indexEntry);
         }
-        entityIndexList.addAll(entityIndexMap.values());
 
-        String docTriplesJson = objectMapper.writeValueAsString(docIndex);
+        // ========== 3️⃣ 抽取同 chunk 内内容实体间关系 ==========
         String entityTriplesJson = objectMapper.writeValueAsString(entityIndexList);
-
-        // String file_Relation_prompt = String.format(PromptTemplates.File_Relation_Extraction, docTriplesJson, entityTriplesJson);
-        BeanOutputConverter<RelationResult> fileAndEntityRelationConverter = new BeanOutputConverter<>(RelationResult.class);
-        options = OpenAiChatOptions.builder()
-                .temperature(0.1)
-                .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, fileAndEntityRelationConverter.getJsonSchema()))
-                .build();
-//        RelationResult relationResult = chatClient.prompt()
-//                .user(file_Relation_prompt)
-//                .options(options)
-//                .call()
-//                .entity(RelationResult.class);
-//
-//        for (Relation relation : relationResult.relationList()) {
-//            Triple fileAndEntityRelationTriple = new Triple();
-//            fileAndEntityRelationTriple.setId(UUID.randomUUID().toString());
-//            fileAndEntityRelationTriple.setSubjectId(relation.subjectId());
-//            fileAndEntityRelationTriple.setSubject(relation.subject());
-//            fileAndEntityRelationTriple.setSubjectType(relation.subjectType());
-//            fileAndEntityRelationTriple.setPredicate(relation.predicate());
-//            fileAndEntityRelationTriple.setType(Triple.Type.RELATION);
-//            fileAndEntityRelationTriple.setObjectId(relation.objectId());
-//            fileAndEntityRelationTriple.setObject(relation.object());
-//            fileAndEntityRelationTriple.setObjectType(relation.objectType());
-//            tempRelations.add(fileAndEntityRelationTriple);
-//        }
-        //保证每个内容节点都与文档内容相连
-//        Set<String> connectedEntityIds = relationResult.relationList()
-//                .stream()
-//                .map(Relation::objectId) // 文档 -> 实体
-//                .collect(Collectors.toSet());
-
-        // 遍历所有实体，补全缺失关系
-        for (Map<String, Object> entity : entityIndexList) {
-            String entityId = (String) entity.get("id");
-            Triple fallbackRelation = new Triple();
-            fallbackRelation.setId(UUID.randomUUID().toString());
-            fallbackRelation.setSubjectId(file.getFileId());
-            fallbackRelation.setSubject(file.getFileName());
-            fallbackRelation.setSubjectType("文档");
-            fallbackRelation.setPredicate("包含"); // 或 “提及”、“涉及”
-            fallbackRelation.setObjectId(entityId);
-            fallbackRelation.setObject((String) entity.get("name"));
-            fallbackRelation.setObjectType((String) entity.get("type"));
-            fallbackRelation.setType(Triple.Type.RELATION);
-            totalRelations.add(fallbackRelation);
-
-        }
-
-        // 4️⃣ 抽取实体之间关系
         String entities_Relation_prompt = String.format(PromptTemplates.Entities_Relation_Extraction, file.getContent(), entityTriplesJson);
-        RelationResult relationResult = chatClient.prompt()
-                .user(entities_Relation_prompt)
-                .options(options)
-                .call()
-                .entity(RelationResult.class);
-        for (Relation relation : relationResult.relationList()) {
-            Triple contentRelationTriple = new Triple();
-            contentRelationTriple.setId(UUID.randomUUID().toString());
-            contentRelationTriple.setSubjectId(relation.subjectId());
-            contentRelationTriple.setSubject(relation.subject());
-            contentRelationTriple.setSubjectType(relation.subjectType());
-            contentRelationTriple.setPredicate(relation.predicate());
-            contentRelationTriple.setType(Triple.Type.RELATION);
-            contentRelationTriple.setObjectId(relation.objectId());
-            contentRelationTriple.setObject(relation.object());
-            contentRelationTriple.setObjectType(relation.objectType());
-            tempRelations.add(contentRelationTriple);
+        BeanOutputConverter<RelationResult> relationConverter = new BeanOutputConverter<>(RelationResult.class);
+        OpenAiChatOptions relationOptions = OpenAiChatOptions.builder()
+                .temperature(0.1)
+                .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, relationConverter.getJsonSchema()))
+                .build();
+
+        RelationResult relationResult = CompletableFuture
+                .supplyAsync(() -> chatClient.prompt()
+                        .user(entities_Relation_prompt)
+                        .options(relationOptions)
+                        .call()
+                        .entity(RelationResult.class))
+                .orTimeout(LLM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .join();
+
+        for (com.bistu.hkgrag.llm.model.extraction.Relation rel : relationResult.relationList()) {
+            String srcName = rel.sourceName() != null ? rel.sourceName().trim() : "";
+            String tgtName = rel.targetName() != null ? rel.targetName().trim() : "";
+            // 过滤掉源实体或目标实体为空的关系（LLM 偶发输出不完整）
+            if (srcName.isEmpty() || tgtName.isEmpty()) {
+                log.warn("跳过不完整关系: sourceName={}, targetName={}", srcName, tgtName);
+                continue;
+            }
+            Relation neoRel = new Relation();
+            neoRel.setSourceId(srcName);
+            neoRel.setTargetId(tgtName);
+            neoRel.setKeywords(srcName + "+" + tgtName);
+            neoRel.setRelationDescription(rel.description());
+            allRawRelations.add(neoRel);
         }
-
-        // ✅ 全部成功，合并到总集合
-        totalFiles.addAll(tempFiles);
-        totalEntities.addAll(tempEntities);
-        totalRelations.addAll(tempRelations);
-
-        // ✅ 合并 subjectId 映射
-        subjectToIdMap.putAll(tempSubjectToIdMap);
-
     }
 
-//    /**
-//     * 使用LLM从指定源路径json文件中抽取信息输出实体、关系的json文件到指定文件下
-//     * 1.抽取文档实体及属性
-//     * 2.抽取文档内容实体及属性
-//     * 3.建立文档内容实体->文档实体之间的关系
-//     * 4.抽取出内容实体之间的关系
-//     *
-//     * @param inputPath  待抽取文件路径
-//     * @param outputPath 实体、关系json文件输出路径
-//     */
-//    public void entitiesAndRelationExtraction(String inputPath, String outputPath) {
-//
-//        if (inputPath == null) {
-//            log.error("源文件路径[{}]不存在", inputPath);
-//        }
-//        if (outputPath == null) {
-//            log.error("输出文件路径[{}]不存在", outputPath);
-//        }
-//        try {
-//            //TODO 测试先获取前10个chunk
-//            List<DoFile> fileList = TextUtils.readJson(inputPath).subList(0, 10);
-//            // List<DoFile> fileList = TextUtils.readJson(inputPath);
-//            log.info("共需要处理[{}]个文档分块", fileList.size());
-//            //存放文档Triple
-//            List<Triple> totalFiles = new ArrayList<>();
-//            //存放文档内容实体Triple
-//            List<Triple> totalEntities = new ArrayList<>();
-//            //存放关系
-//            List<Triple> totalRelations = new ArrayList<>();
-//            Map<String, String> subjectToIdMap = new HashMap<>();
-//
-//            for (int i = 0; i < fileList.size(); i++) {
-//                DoFile file = fileList.get(i);
-//                log.info("开始处理第 {} 个文档，文档ID：{}，名称：{}", i + 1, file.getFileId(), file.getFileName());
-//                /**
-//                 * 提取文档实体及实体属性
-//                 * 1.获取chunk
-//                 * 2.填充提示词
-//                 * 3.调用大模型填充json模板
-//                 * 4.转为Triples存储
-//                 */
-//                String file_Node_prompt = String.format(PromptTemplates.File_Node_Extraction, file.getFileName(), file.getContent());
-//                //让大模型按照指定的 JSON Schema 输出结构化数据，并自动解析成 Java 对象 EntityResult
-//                //定义一个输出解析器，把LLM的回答转换成Java Bean
-////                BeanOutputConverter<EntityResult> fileEntityConverter =
-////                        new BeanOutputConverter<>(EntityResult.class);
-////
-////                Prompt prompt = new Prompt(
-////                        file_Node_prompt,
-////                        OpenAiChatOptions.builder()
-////                                .temperature(0.1)
-////                                .responseFormat(
-////                                        new ResponseFormat(
-////                                                ResponseFormat.Type.JSON_SCHEMA,
-////                                                fileEntityConverter.getJsonSchema()
-////                                        )
-////                                )
-////                                .build()
-////                );
-////                ChatResponse response = chatModel.call(prompt);
-////                String content = response.getResult().getOutput().getText();
-////                EntityResult entityResult = objectMapper.readValue(content, EntityResult.class);
-//                BeanOutputConverter<EntityResult> fileEntityConverter = new BeanOutputConverter<>(EntityResult.class);
-////                OpenAiChatOptions options = OpenAiChatOptions.builder()
-////                        .temperature(0.1)
-////                        .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, fileEntityConverter.getJsonSchema()))
-////                        .build();
-//                OpenAiChatOptions options = OpenAiChatOptions.builder()
-//                        .temperature(0.1) // 保持低温度
-//                        // 正确的 JSON_OBJECT 构建方式
-//                        .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, fileEntityConverter.getJsonSchema()))
-//                        .build();
-//                EntityResult entityResult = chatClient.prompt().user(file_Node_prompt).options(options).call().entity(EntityResult.class);
-//                //将record映射到数据库层面的dao(Entity) 并补充文件的subjectId
-//                for (Entity fileEntity : entityResult.EntityList()) {
-//                    Triple fileTriple = new Triple();
-//                    fileTriple.setId(UUID.randomUUID().toString());
-//                    fileTriple.setSubjectId(file.getFileId());
-//                    fileTriple.setSubject(fileEntity.subject());
-//                    fileTriple.setPredicate(fileEntity.predicate());
-//                    fileTriple.setObject(fileEntity.object());
-//                    fileTriple.setType(Triple.Type.PROPERTY);
-//                    fileTriple.setSubjectType("文档");
-//                    totalFiles.add(fileTriple);
-//                }
-//
-//                /**
-//                 * 提取文档内容中的实体及实体属性
-//                 */
-//                String file_Extraction_prompt = String.format(PromptTemplates.Content_Entity_Extraction, file.getContent());
-//                entityResult = chatClient.prompt().user(file_Extraction_prompt).options(options).call().entity(EntityResult.class);
-//                List<Triple> contentEntityTriples = new ArrayList<>();
-//                for (Entity contentEntity : entityResult.EntityList()) {
-//                    Triple contentTriple = new Triple();
-//                    //为每个抽取出的属性添加id
-//                    contentTriple.setId(UUID.randomUUID().toString());
-//                    contentTriple.setSubject(contentEntity.subject());
-//                    contentTriple.setPredicate(contentEntity.predicate());
-//                    contentTriple.setObject(contentEntity.object());
-//                    contentTriple.setType(Triple.Type.PROPERTY);
-//                    contentTriple.setSubjectType(contentEntity.subjectType());
-//                    //对主体id去重，存在则复用Id，不存在则生成新Id并存入映射
-//                    String subject = contentEntity.subject();
-//                    String subjectId = subjectToIdMap.computeIfAbsent(
-//                            subject,
-//                            k -> UUID.randomUUID().toString()
-//                    );
-//                    contentTriple.setSubjectId(subjectId);
-//                    //放入临时三元组，在抽取内容实体之间的关系时使用
-//                    contentEntityTriples.add(contentTriple);
-//                    //加入最终的三元组列表作为结果
-//                    totalEntities.add(contentTriple);
-//                }
-//                /**
-//                 * 建立文档实体-文档内容实体之间的关系
-//                 */
-//                //第二步抽取的实体带有属性，存在一个实体多个属性的情况，故需要对实体去重
-//                Map<String, Object> docIndex = new HashMap<>();
-//                docIndex.put("fileId", file.getFileId());
-//                docIndex.put("fileName", file.getFileName());
-//                List<Map<String, Object>> entityIndexList = new ArrayList<>();
-//                //用subjectId去重
-//                Map<String, Map<String, Object>> entityIndexMap = new HashMap<>();
-//
-//                for (Triple t : contentEntityTriples) {
-//                    //判断当前内容实体的id是否存在
-//                    if (!entityIndexMap.containsKey(t.getSubjectId())) {
-//                        Map<String, Object> e = new HashMap<>();
-//                        e.put("id", t.getSubjectId());
-//                        e.put("name", t.getSubject());
-//                        e.put("type", t.getSubjectType());
-//                        entityIndexMap.put(t.getSubjectId(), e);
-//                    }
-//                }
-//                //存储去重后的jsonl实体信息
-//                entityIndexList.addAll(entityIndexMap.values());
-//                String docTriplesJson = objectMapper.writeValueAsString(docIndex);
-//                String entityTriplesJson = objectMapper.writeValueAsString(entityIndexList);
-//                //通过模型+提示词抽取出 第i个文档与该文档所有内容实体之间的关系
-//
-//                String file_Relation_prompt = String.format(PromptTemplates.File_Relation_Extraction, docTriplesJson, entityTriplesJson);
-//                BeanOutputConverter<RelationResult> fileAndEntityRelationConverter = new BeanOutputConverter<>(RelationResult.class);
-//                options = OpenAiChatOptions.builder()
-//                        .temperature(0.1)
-//                        .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, fileAndEntityRelationConverter.getJsonSchema()))
-//                        .build();
-//                RelationResult relationResult = chatClient.prompt()
-//                        .user(file_Relation_prompt)
-//                        .options(options)
-//                        .call()
-//                        .entity(RelationResult.class);
-//                //record到triple映射并给关系生成唯一id
-//                for (Relation relation : relationResult.relationList()) {
-//                    Triple fileAndEntityRelationTriple = new Triple();
-//                    fileAndEntityRelationTriple.setId(UUID.randomUUID().toString());
-//                    fileAndEntityRelationTriple.setSubjectId(relation.subjectId());
-//                    fileAndEntityRelationTriple.setSubject(relation.subject());
-//                    fileAndEntityRelationTriple.setSubjectType(relation.subjectType());
-//                    fileAndEntityRelationTriple.setPredicate(relation.predicate());
-//                    fileAndEntityRelationTriple.setType(Triple.Type.RELATION);
-//                    fileAndEntityRelationTriple.setObjectId(relation.objectId());
-//                    fileAndEntityRelationTriple.setObject(relation.object());
-//                    fileAndEntityRelationTriple.setObjectType(relation.objectType());
-//                    totalRelations.add(fileAndEntityRelationTriple);
+    /**
+     * 消歧后合并实体间关系：
+     * 将关系中的 sourceId/targetId（实体名称）通过 nameToIdMap 替换为消歧后的 entityId，
+     * 合并完全重复的关系（sourceId + targetId + keywords 相同的去重）
+     */
+    private List<Relation> mergeRelationsAfterDedup(
+            List<Relation> rawRelations,
+            Map<String, String> nameToIdMap) {
 
-//                }
-//                //保证每个内容节点都与文档内容相连
-//                Set<String> connectedEntityIds = relationResult.relationList()
-//                        .stream()
-//                        .map(Relation::objectId) // 文档 -> 实体
-//                        .collect(Collectors.toSet());
-//
-//                // 遍历所有实体，补全缺失关系
-//                for (Map<String, Object> entity : entityIndexList) {
-//                    String entityId = (String) entity.get("id");
-//                    if (!connectedEntityIds.contains(entityId)) {
-//                        // 创建兜底关系：文档 -> 实体
-//                        Triple fallbackRelation = new Triple();
-//                        fallbackRelation.setId(UUID.randomUUID().toString());
-//                        fallbackRelation.setSubjectId(file.getFileId());
-//                        fallbackRelation.setSubject(file.getFileName());
-//                        fallbackRelation.setSubjectType("文档");
-//                        fallbackRelation.setPredicate("包含"); // 或 “提及”、“涉及”
-//                        fallbackRelation.setObjectId(entityId);
-//                        fallbackRelation.setObject((String) entity.get("name"));
-//                        fallbackRelation.setObjectType((String) entity.get("type"));
-//                        fallbackRelation.setType(Triple.Type.RELATION);
-//                        totalRelations.add(fallbackRelation);
-//                    }
-//                }
-//                /**
-//                 * 抽取出内容实体之间的关系
-//                 */
-//                String entities_Relation_prompt = String.format(PromptTemplates.Entities_Relation_Extraction, file.getContent(), entityTriplesJson);
-//                relationResult = chatClient.prompt()
-//                        .user(entities_Relation_prompt)
-//                        .options(options)
-//                        .call()
-//                        .entity(RelationResult.class);
-//                for (Relation relation : relationResult.relationList()) {
-//                    Triple contentRelationTriple = new Triple();
-//                    contentRelationTriple.setId(UUID.randomUUID().toString());
-//                    contentRelationTriple.setSubjectId(relation.subjectId());
-//                    contentRelationTriple.setSubject(relation.subject());
-//                    contentRelationTriple.setSubjectType(relation.subjectType());
-//                    contentRelationTriple.setPredicate(relation.predicate());
-//                    contentRelationTriple.setType(Triple.Type.RELATION);
-//                    contentRelationTriple.setObjectId(relation.objectId());
-//                    contentRelationTriple.setObject(relation.object());
-//                    contentRelationTriple.setObjectType(relation.objectType());
-//                    totalRelations.add(contentRelationTriple);
-//                }
-//                log.info("---------- 第 " + (i + 1) + " 个文档处理完成 ----------");
-//            }
-//            // 输出实体 JSONL
-////            TextUtils.writeJsonl(outputPath + "/fileEntities.jsonl", totalFiles);
-////            TextUtils.writeJsonl(outputPath + "/contentEntities.jsonl", totalEntities);
-//            // 合并两个列表（保持原有顺序、原有结构）
-//            List<Object> combined = new ArrayList<>();
-//            combined.addAll(totalFiles);
-//            combined.addAll(totalEntities);
-//            // 写入同一个文件
-//            TextUtils.writeJsonl(outputPath + "/all_entities.jsonl", combined);
-//
-//            // 输出关系 JSONL
-//            TextUtils.writeJsonl(outputPath + "/all_relations.jsonl", totalRelations);
-//            log.info("抽取信息成功");
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            log.error("抽取信息失败", e);
-//        }
-//    }
+        // 用 (sourceId, targetId, keywords) 去重
+        Map<String, Relation> mergedMap = new LinkedHashMap<>();
 
+        for (Relation rel : rawRelations) {
+            String sourceName = rel.getSourceId();  // 原始关系中存的是实体名称
+            String targetName = rel.getTargetId();
+
+            String sourceId = nameToIdMap.get(sourceName);
+            String targetId = nameToIdMap.get(targetName);
+            if (sourceId == null || targetId == null) continue;  // 实体不存在了
+            if (sourceId.equals(targetId)) continue;             // 自环跳过
+
+            String key = sourceId + "|" + targetId + "|" + rel.getKeywords();
+            if (!mergedMap.containsKey(key)) {
+                Relation merged = new Relation();
+                merged.setSourceId(sourceId);
+                merged.setTargetId(targetId);
+                merged.setKeywords(rel.getKeywords());
+                merged.setRelationDescription(rel.getRelationDescription());
+                mergedMap.put(key, merged);
+            }
+            // 如果已存在，跳过（去重）
+        }
+
+        return new ArrayList<>(mergedMap.values());
+    }
+
+    /**
+     * 建立文档-内容实体的"包含"关系。
+     * 消歧后执行，按 fileId 分组获取每个 chunk 的实体。
+     */
+    private List<Relation> buildDocEntityRelations(
+            List<Entity> allRawEntities,
+            Map<String, String> nameToIdMap) {
+
+        // 按 fileId 分组，得到每个 chunk 对应的原始实体列表
+        Map<String, List<Entity>> entitiesByFileId = allRawEntities.stream()
+                .collect(Collectors.groupingBy(Entity::getFileId));
+
+        // 用 (sourceId, targetId) 去重（一个文档对同一个实体只保留一条包含关系）
+        Map<String, Relation> docRelMap = new LinkedHashMap<>();
+
+        for (Map.Entry<String, List<Entity>> entry : entitiesByFileId.entrySet()) {
+            String fileId = entry.getKey();
+            List<Entity> chunkEntities = entry.getValue();
+
+            for (Entity entity : chunkEntities) {
+                String entityName = entity.getEntityName();
+                String entityId = nameToIdMap.get(entityName);
+                if (entityId == null) continue;
+
+                String key = fileId + "|" + entityId;
+                if (!docRelMap.containsKey(key)) {
+                    Relation docRel = new Relation();
+                    docRel.setSourceId(fileId);
+                    docRel.setTargetId(entityId);
+                    docRel.setKeywords("doc+" + entityName);
+                    docRel.setRelationDescription("包含");
+                    docRelMap.put(key, docRel);
+                }
+            }
+        }
+
+        return new ArrayList<>(docRelMap.values());
+    }
+
+    /**
+     * 对消歧去重后描述包含拼接符号（+ 或 |）的实体，调用 LLM 精炼总结描述。
+     * 只处理描述中包含拼接符号的实体，单句描述直接跳过。
+     */
+    private List<Entity> refineEntityDescriptions(List<Entity> entities) {
+        if (entities == null || entities.isEmpty()) return entities;
+
+        List<Entity> refined = new ArrayList<>();
+        int refinedCount = 0;
+        Semaphore semaphore = new Semaphore(5);
+
+        for (Entity entity : entities) {
+            String desc = entity.getEntityDescription();
+            if (desc == null || (!desc.contains(" + ") && !desc.contains(" | "))) {
+                refined.add(entity);
+                continue;
+            }
+
+            try {
+                semaphore.acquire();
+                try {
+                    String summaryPrompt = String.format(
+                            PromptTemplates.Description_Summary, desc);
+                    String summarized = chatClient.prompt().user(summaryPrompt).call().content();
+                    if (summarized != null && !summarized.isBlank()) {
+                        entity.setEntityDescription(summarized.trim());
+                        refinedCount++;
+                        log.debug("实体描述精炼: [{}] -> {}", entity.getEntityName(), summarized.trim());
+                    }
+                } finally {
+                    semaphore.release();
+                }
+            } catch (Exception e) {
+                log.warn("实体[{}]描述精炼失败，保留原始描述", entity.getEntityName());
+            }
+            refined.add(entity);
+        }
+
+        log.info("描述精炼完成: 共处理 {} 个拼接描述", refinedCount);
+        return refined;
+    }
+
+    /**
+     * 合并同一文档多个chunk抽取的文档实体（同一fileId只保留一个）。
+     * entityInfo 直接拼接去重，entityDescription 调 LLM 精炼为通顺描述。
+     */
+    private List<Entity> mergeDocEntities(List<Entity> docEntities) {
+        if (docEntities == null || docEntities.isEmpty()) return docEntities;
+
+        // 按 entityId（即 fileId）分组
+        Map<String, List<Entity>> grouped = docEntities.stream()
+                .collect(Collectors.groupingBy(Entity::getEntityId, LinkedHashMap::new, Collectors.toList()));
+
+        List<Entity> merged = new ArrayList<>();
+        Semaphore semaphore = new Semaphore(5);
+
+        for (Map.Entry<String, List<Entity>> entry : grouped.entrySet()) {
+            List<Entity> sameFileEntities = entry.getValue();
+            if (sameFileEntities.size() == 1) {
+                merged.add(sameFileEntities.get(0));
+                continue;
+            }
+
+            // 多个chunk：取第一个作为基准
+            Entity base = sameFileEntities.get(0);
+
+            // entityInfo：去重后直接拼接
+            String mergedInfo = sameFileEntities.stream()
+                    .map(Entity::getEntityInfo)
+                    .filter(info -> info != null && !info.isBlank())
+                    .distinct()
+                    .collect(Collectors.joining("; "));
+            base.setEntityInfo(mergedInfo);
+
+            // entityDescription：去重后调 LLM 精炼
+            List<String> distinctDescs = sameFileEntities.stream()
+                    .map(Entity::getEntityDescription)
+                    .filter(d -> d != null && !d.isBlank())
+                    .distinct()
+                    .toList();
+
+            if (distinctDescs.size() > 1) {
+                String combinedDesc = String.join(" + ", distinctDescs);
+                try {
+                    semaphore.acquire();
+                    try {
+                        String summaryPrompt = String.format(
+                                PromptTemplates.Description_Summary, combinedDesc);
+                        String summarized = chatClient.prompt().user(summaryPrompt).call().content();
+                        if (summarized != null && !summarized.isBlank()) {
+                            base.setEntityDescription(summarized.trim());
+                            log.info("文档实体[{}]描述合并精炼完成: {} 个chunk → 1", base.getEntityName(), sameFileEntities.size());
+                        }
+                    } finally {
+                        semaphore.release();
+                    }
+                } catch (Exception e) {
+                    log.warn("文档实体[{}]描述合并失败，使用拼接描述", base.getEntityName());
+                    base.setEntityDescription(combinedDesc);
+                }
+            }
+
+            merged.add(base);
+        }
+
+        return merged;
+    }
+
+    /**
+     * Gleaning：让 LLM 检查文档内容，补充第一轮遗漏的实体
+     */
+    private List<com.bistu.hkgrag.llm.model.extraction.Entity> gleanMissingEntities(
+            String content,
+            List<com.bistu.hkgrag.llm.model.extraction.Entity> existingEntities) {
+
+        // 构建已抽取实体的摘要列表
+        List<String> existingNames = existingEntities.stream()
+                .map(com.bistu.hkgrag.llm.model.extraction.Entity::entityName)
+                .toList();
+        String existingJson;
+        try {
+            existingJson = objectMapper.writeValueAsString(existingNames);
+        } catch (Exception e) {
+            existingJson = existingNames.toString();
+        }
+
+        String gleaningPrompt = String.format(PromptTemplates.Entity_Gleaning, content, existingJson);
+        BeanOutputConverter<EntityResult> converter = new BeanOutputConverter<>(EntityResult.class);
+        OpenAiChatOptions gleanOptions = OpenAiChatOptions.builder()
+                .temperature(0.1)
+                .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, converter.getJsonSchema()))
+                .build();
+
+        try {
+            EntityResult result = CompletableFuture
+                    .supplyAsync(() -> chatClient.prompt()
+                            .user(gleaningPrompt)
+                            .options(gleanOptions)
+                            .call()
+                            .entity(EntityResult.class))
+                    .orTimeout(LLM_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                    .join();
+
+            if (result != null && result.entityList() != null) {
+                return result.entityList();
+            }
+        } catch (Exception e) {
+            log.warn("Gleaning 失败: {}", e.getMessage());
+        }
+        return List.of();
+    }
     /**
      * 使用大模型总结文档主题
      *
@@ -720,13 +659,19 @@ public class ExtractionService {
         );
 
         // ✅ 限流（防止平台限流）
-        Semaphore semaphore = new Semaphore(5);
+        Semaphore semaphore = new Semaphore(3);
+        // 每次请求之间的最小间隔（毫秒），防止 LLM 服务被打爆
+        final long THROTTLE_MS = 500;
+        // 单次 LLM 调用的最大重试次数
+        final int MAX_RETRY = 3;
 
         try {
             log.info("开始提取文档主题");
 
-            // ✅ 1. 读取数据
-            List<DoFile> fileList = TextUtils.readJson(inputPath);
+//            // ✅ 1. 读取数据
+//            List<DoFile> fileList = TextUtils.readJson(inputPath);
+            // ✅ 1. 读取数据（JSONL 格式，每行一个 JSON 对象）
+            List<DoFile> fileList = TextUtils.readJsonlToList(inputPath, DoFile.class);
 
             // ✅ 2. 按 fileId 分组（文档级）
             Map<String, List<DoFile>> docChunksMap = fileList.stream()
@@ -751,62 +696,116 @@ public class ExtractionService {
                         // ========= Step1：chunk主题抽取 =========
                         for (DoFile chunk : chunks) {
                             totalChunks.incrementAndGet();
-                            semaphore.acquire();
-                            try {
-                                String promptStr = String.format(
-                                        PromptTemplates.File_Topic_Extraction,
-                                        chunk.getFileName(),
-                                        chunk.getContent()
-                                );
-                                chatClient.prompt(promptStr);
 
-//                                ChatResponse response = chatModel.call(new Prompt(promptStr));
-//                                String topic = response.getResult().getOutput().getText().trim();
-                                // 1. 构建请求并获取完整响应
-                                ChatResponse response = chatClient.prompt(promptStr)
-                                        .call()
-                                        .chatResponse();
-                                String topic = response.getResult().getOutput().getText().trim();
+                            boolean chunkSuccess = false;
+                            for (int retry = 0; retry < MAX_RETRY; retry++) {
+                                semaphore.acquire();
+                                try {
+                                    String promptStr = String.format(
+                                            PromptTemplates.File_Topic_Extraction,
+                                            chunk.getFileName(),
+                                            chunk.getContent()
+                                    );
 
-                                if (topic != null && !topic.isEmpty()) {
-                                    chunk.setTopic(topic);
-                                    chunkTopics.add(topic);
-                                    successChunks.incrementAndGet();
-                                }else{
-                                    failChunks.incrementAndGet();
-                                    failedChunkIds.add(chunk.getChunkId());
+                                    ChatResponse response = chatClient.prompt(promptStr)
+                                            .call()
+                                            .chatResponse();
+                                    String topic = response.getResult().getOutput().getText().trim();
+
+                                    if (topic != null && !topic.isEmpty()) {
+                                        chunk.setTopic(topic);
+                                        chunkTopics.add(topic);
+                                        successChunks.incrementAndGet();
+                                        chunkSuccess = true;
+                                    }
+                                    break; // 请求成功，跳出重试循环
+
+                                } catch (Exception e) {
+                                    if (retry < MAX_RETRY - 1) {
+                                        long backoff = (long) Math.pow(2, retry) * 1000; // 1s, 2s, 4s
+                                        log.warn("Chunk[{}] LLM调用失败，第{}次重试(共{}次)，等待{}ms: {}",
+                                                chunk.getChunkId(), retry + 1, MAX_RETRY, backoff, e.getMessage());
+                                        try {
+                                            Thread.sleep(backoff);
+                                        } catch (InterruptedException ie) {
+                                            Thread.currentThread().interrupt();
+                                            break;
+                                        }
+                                    } else {
+                                        log.error("Chunk[{}] 重试{}次后仍失败: {}",
+                                                chunk.getChunkId(), MAX_RETRY, e.getMessage());
+                                    }
+                                } finally {
+                                    semaphore.release();
                                 }
 
-                            } finally {
-                                semaphore.release();
+                                // 释放信号量后稍等，避免瞬间并发冲击 LLM 服务
+                                try {
+                                    Thread.sleep(THROTTLE_MS);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                            }
+
+                            if (!chunkSuccess) {
+                                failChunks.incrementAndGet();
+                                failedChunkIds.add(chunk.getChunkId());
                             }
                         }
 
                         // ========= Step2：文档级主题汇总 =========
-                        String finalTopic;
+                        String finalTopic = "未知主题";
 
                         if (chunkTopics.isEmpty()) {
                             finalTopic = "";
                         } else if (chunkTopics.size() == 1) {
                             finalTopic = chunkTopics.get(0);
                         } else {
-                            semaphore.acquire();
-                            try {
-                                String summaryPrompt = String.format(
-                                        PromptTemplates.File_Topic_Summary_Extraction,
-                                        chunks.get(0).getFileName(),
-                                        String.join("\n", chunkTopics)
-                                );
+                            boolean summarySuccess = false;
+                            for (int retry = 0; retry < MAX_RETRY; retry++) {
+                                semaphore.acquire();
+                                try {
+                                    String summaryPrompt = String.format(
+                                            PromptTemplates.File_Topic_Summary_Extraction,
+                                            chunks.get(0).getFileName(),
+                                            String.join("\n", chunkTopics)
+                                    );
 
-//                                ChatResponse finalResponse = chatModel.call(new Prompt(summaryPrompt));
-//                                finalTopic = finalResponse.getResult().getOutput().getText().trim();
-                                ChatResponse response = chatClient.prompt(summaryPrompt)
-                                        .call()
-                                        .chatResponse();
-                                finalTopic = response.getResult().getOutput().getText().trim();
+                                    ChatResponse response = chatClient.prompt(summaryPrompt)
+                                            .call()
+                                            .chatResponse();
+                                    finalTopic = response.getResult().getOutput().getText().trim();
+                                    summarySuccess = true;
+                                    break;
 
-                            } finally {
-                                semaphore.release();
+                                } catch (Exception e) {
+                                    if (retry < MAX_RETRY - 1) {
+                                        long backoff = (long) Math.pow(2, retry) * 1000;
+                                        log.warn("文档[{}]主题汇总失败，第{}次重试(共{}次)，等待{}ms: {}",
+                                                fileId, retry + 1, MAX_RETRY, backoff, e.getMessage());
+                                        try {
+                                            Thread.sleep(backoff);
+                                        } catch (InterruptedException ie) {
+                                            Thread.currentThread().interrupt();
+                                            break;
+                                        }
+                                    } else {
+                                        log.error("文档[{}]主题汇总重试{}次后仍失败: {}",
+                                                fileId, MAX_RETRY, e.getMessage());
+                                    }
+                                } finally {
+                                    semaphore.release();
+                                }
+                                try {
+                                    Thread.sleep(THROTTLE_MS);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                            }
+                            if (!summarySuccess) {
+                                finalTopic = "未知主题";
                             }
                         }
 

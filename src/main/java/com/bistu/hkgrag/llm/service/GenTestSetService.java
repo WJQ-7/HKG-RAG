@@ -68,174 +68,171 @@ public class GenTestSetService {
             List<String> fileIds = new ArrayList<>(fileGroupMap.keySet());
             Collections.shuffle(fileIds);
             Random random = new Random();
-//
-//            // ========= 1. 单跳 =========
-//            BeanOutputConverter<TestSetListResult> testSetConverter = new BeanOutputConverter<>(TestSetListResult.class);
-//            OpenAiChatOptions options = OpenAiChatOptions.builder()
-//                    .temperature(0.1)
-//                    .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverter.getJsonSchema()))
-//                    .build();
-//            //单跳问题计数
-//            int singleCount = 0;
-//            for (int i = 0; i < SINGLE_HOP; i++) {
-//                //随机选一个 fileId
-//                String fileId = fileIds.get(random.nextInt(fileIds.size()));
-//                //获取随机id下的文档
-//                List<DoFile> group = fileGroupMap.get(fileId);
-//                //将文档拼接成字符串
-//                String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
-//                String single_Hop_prompt = String.format(PromptTemplates.Generation_SingleHop, group.get(0).getFileName(),fullContent);
-//
-//                TestSetListResult singleHopList = chatClient.prompt()
-//                        .user(single_Hop_prompt)
-//                        .options(options)
-//                        .call()
-//                        .entity(TestSetListResult.class);
-//
-//                // 2. 手动转 List<TestSetResult>
-//
-//                for (TestSetResult item : singleHopList.testSetResultList()) {
-//                    TestSet testSet = new TestSet();
-//                    testSet.setFileId(fileId);
-//                    testSet.setType(TestSet.Type.SINGLE_HOP);
-//                    testSet.setQuestion(item.question());
-//                    testSet.setAnswer(item.answer());
-//                    testSet.setAccording(item.according());
-//                    testSets.add(testSet);
-//                    singleCount++;
-//                }
-//
-//                log.info("单跳进度：{}% ({}/{})", (i + 1) * 100 / SINGLE_HOP, i + 1, SINGLE_HOP);
-//
-//            }
-//            log.info("单跳问题答案对已经生成完成，单跳问题的个数：{}", singleCount);
-//
-//            // ========= 2. 同文档多跳 =========
-//            int multiCount = 0;
-//            for (int i = 0; i < SAME_DOC_Multi_HOP; i++) {
-//                // 随机选一个 fileId（同文档，保证上下文关联）
-//                String fileId = fileIds.get(random.nextInt(fileIds.size()));
-//                List<DoFile> group = fileGroupMap.get(fileId);
-//                String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
-//                // 多跳提示词
-//                String multi_Hop_Prompt = String.format(PromptTemplates.Generation_SimpleDoc_MultiHop, group.get(0).getFileName(),fullContent);
-//                // 调用大模型生成多跳问答对
-//                TestSetListResult multiHopList = chatClient.prompt()
-//                        .user(multi_Hop_Prompt)
-//                        .options(options)
-//                        .call()
-//                        .entity(TestSetListResult.class);
-//
-//                for (TestSetResult item : multiHopList.testSetResultList()) {
-//                    TestSet testSet = new TestSet();
-//                    testSet.setFileId(fileId);
-//                    testSet.setQuestion(item.question());
-//                    testSet.setAnswer(item.answer());
-//                    testSet.setAccording(item.according());
-//                    testSet.setType(TestSet.Type.SAME_DOC_Multi_HOP);
-//                    testSets.add(testSet);
-//                    multiCount++;
-//                }
-//
-//                log.info("多跳进度：{}% ({}/{})", (i + 1) * 100 / SAME_DOC_Multi_HOP, i + 1, SAME_DOC_Multi_HOP);
-//                TextUtils.printProgress(i + 1, SAME_DOC_Multi_HOP, "多跳生成进度");
-//
-//            }
-//            log.info("同文档多跳问题答案对已经生成完成，同文档多跳问题的个数为：{}",multiCount);
-//            log.info("总数：{}", singleCount+multiCount);
-//
-//
-////            // ========= 3. 跨文档 =========
-//            //1.获取所有聚类节点id
-//            List<Map<String, String>> clusterList = neo4jService.findNodeByLabel("主题聚类节点");
-//            List<String> idList = new ArrayList<>();
-//            for (Map<String, String> map : clusterList) {
-//                String id = map.get("id");
-//                idList.add(id);
-//            }
-//            //2.获取所有聚类节点相连的文档节点
-//            List<Map<String, Object>> result = new ArrayList<>();
-//            for (String id : idList) {
-//                List<Map<String, Object>> fileList = neo4jService.findFileById(id);
-//                if (fileList.size() > 1) {
-//                    // 把关系数据 → 提取出 end（文档节点）
-//                    List<Map<String, Object>> docNodeList = new ArrayList<>();
-//                    for (Map<String, Object> relationMap : fileList) {
-//                        // 从关系里取出 文档节点 end
-//                        Map<String, Object> docNode = (Map<String, Object>) relationMap.get("end");
-//                        docNodeList.add(docNode);
-//                    }
-//
-//                    Map<String, Object> item = new HashMap<>();
-//                    item.put("clusterId", id);
-//                    item.put("documentCount", fileList.size());
-//                    item.put("documentList", docNodeList); // 这里存纯文档节点！
-//                    result.add(item);
-//                }
-//            }
-//            int crossDosCount = 0;
-//            for (int i = 0; i < Math.min(CROSS_DOC_Multi_HOP, result.size()); i++) {
-//                int randomIndex = random.nextInt(result.size());
-//                Map<String, Object> randomCluster = result.remove(randomIndex);
-//                // 获取随机id下的所有文档
-//                List<Map<String, String>> docList = (List<Map<String, String>>) randomCluster.get("documentList");
-//                List<String> fileIdList = new ArrayList<>();
-//                if (docList.size() == 2) {
-//                    fileIdList.add(docList.get(0).get("id"));
-//                    fileIdList.add(docList.get(1).get("id"));
-//                }
-//                // 如果超过 2 个，再随机取两个不同的
-//                else {
-//                    int index1 = random.nextInt(docList.size());
-//                    int index2 = random.nextInt(docList.size());
-//
-//                    // 防止重复
-//                    while (index1 == index2) {
-//                        index2 = random.nextInt(docList.size());
-//                    }
-//                    fileIdList.add(docList.get(index1).get("id"));
-//                    fileIdList.add(docList.get(index2).get("id"));
-//                }
-//                List<DoFile> fileList = fileService.getFilesById(fileIdList);
-//                StringBuilder promptSb = new StringBuilder();
-//                for (int j = 0; j < fileList.size(); j++) {
-//                    promptSb.append("文档").append(j + 1).append("：")
-//                            .append(fileList.get(j).getContent())
-//                            .append("\n\n");
-//                }
-//                String Cross_Dos_Prompt = String.format(PromptTemplates.Generation_CROSS_DOS, promptSb.toString());
-//
-//                //调用大模型生成多跳问答对
-//                TestSetListResult crossDosList = chatClient.prompt()
-//                        .user(Cross_Dos_Prompt)
-//                        .options(options)
-//                        .call()
-//                        .entity(TestSetListResult.class);
-//
-//                for (TestSetResult item : crossDosList.testSetResultList()) {
-//                    TestSet testSet = new TestSet();
-//                    String fileId = fileList.stream()
-//                            .map(DoFile::getFileId)  // 提取 id
-//                            .map(String::valueOf) // 转字符串
-//                            .collect(Collectors.joining(","));
-//                    testSet.setFileId(fileId);
-//                    testSet.setQuestion(item.question());
-//                    testSet.setAnswer(item.answer());
-//                    testSet.setAccording(item.according());
-//                    testSet.setType(TestSet.Type.CROSS_DOC_Multi_HOP);
-//                    testSets.add(testSet);
-//                    crossDosCount++;
-//                }
-//
-//                log.info("多跳进度：{}% ({}/{})", (i + 1) * 100 / CROSS_DOC_Multi_HOP, i + 1, CROSS_DOC_Multi_HOP);
-//                TextUtils.printProgress(i + 1, CROSS_DOC_Multi_HOP, "多跳生成进度");
-//
-//            }
-//            log.info("跨文档问题答案对已经生成完成，跨文档问题的个数为：{}", crossDosCount);
-//            // log.info("总数：{}", singleCount+multiCount+crossDosCount);
+
+            // ========= 1. 单跳 =========
+            BeanOutputConverter<TestSetListResult> testSetConverter = new BeanOutputConverter<>(TestSetListResult.class);
+            OpenAiChatOptions options = OpenAiChatOptions.builder()
+                    .temperature(0.1)
+                    .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverter.getJsonSchema()))
+                    .build();
+            //单跳问题计数
+            int singleCount = 0;
+            for (int i = 0; i < SINGLE_HOP; i++) {
+                //随机选一个 fileId
+                String fileId = fileIds.get(random.nextInt(fileIds.size()));
+                //获取随机id下的文档
+                List<DoFile> group = fileGroupMap.get(fileId);
+                //将文档拼接成字符串
+                String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
+                String single_Hop_prompt = String.format(PromptTemplates.Generation_SingleHop, group.get(0).getFileName(),fullContent);
+
+                TestSetListResult singleHopList = chatClient.prompt()
+                        .user(single_Hop_prompt)
+                        .options(options)
+                        .call()
+                        .entity(TestSetListResult.class);
+
+                // 2. 手动转 List<TestSetResult>
+
+                for (TestSetResult item : singleHopList.testSetResultList()) {
+                    TestSet testSet = new TestSet();
+                    testSet.setFileId(fileId);
+                    testSet.setType(TestSet.Type.SINGLE_HOP);
+                    testSet.setQuestion(item.question());
+                    testSet.setAnswer(item.answer());
+                    testSet.setAccording(item.according());
+                    testSets.add(testSet);
+                    singleCount++;
+                }
+
+                log.info("单跳进度：{}% ({}/{})", (i + 1) * 100 / SINGLE_HOP, i + 1, SINGLE_HOP);
+
+            }
+            log.info("单跳问题答案对已经生成完成，单跳问题的个数：{}", singleCount);
+
+            // ========= 2. 同文档多跳 =========
+            int multiCount = 0;
+            for (int i = 0; i < SAME_DOC_Multi_HOP; i++) {
+                // 随机选一个 fileId（同文档，保证上下文关联）
+                String fileId = fileIds.get(random.nextInt(fileIds.size()));
+                List<DoFile> group = fileGroupMap.get(fileId);
+                String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
+                // 多跳提示词
+                String multi_Hop_Prompt = String.format(PromptTemplates.Generation_SimpleDoc_MultiHop, group.get(0).getFileName(),fullContent);
+                // 调用大模型生成多跳问答对
+                TestSetListResult multiHopList = chatClient.prompt()
+                        .user(multi_Hop_Prompt)
+                        .options(options)
+                        .call()
+                        .entity(TestSetListResult.class);
+
+                for (TestSetResult item : multiHopList.testSetResultList()) {
+                    TestSet testSet = new TestSet();
+                    testSet.setFileId(fileId);
+                    testSet.setQuestion(item.question());
+                    testSet.setAnswer(item.answer());
+                    testSet.setAccording(item.according());
+                    testSet.setType(TestSet.Type.SAME_DOC_Multi_HOP);
+                    testSets.add(testSet);
+                    multiCount++;
+                }
+
+                log.info("多跳进度：{}% ({}/{})", (i + 1) * 100 / SAME_DOC_Multi_HOP, i + 1, SAME_DOC_Multi_HOP);
+                TextUtils.printProgress(i + 1, SAME_DOC_Multi_HOP, "多跳生成进度");
+
+            }
+            log.info("同文档多跳问题答案对已经生成完成，同文档多跳问题的个数为：{}",multiCount);
+            log.info("总数：{}", singleCount+multiCount);
 
 
-            //2.对文档摘要进行聚类
+//            // ========= 3. 跨文档 =========
+            //1.获取所有聚类节点id
+            List<Map<String, String>> clusterList = neo4jService.findNodeByLabel("主题聚类节点");
+            List<String> idList = new ArrayList<>();
+            for (Map<String, String> map : clusterList) {
+                String id = map.get("id");
+                idList.add(id);
+            }
+            //2.获取所有聚类节点相连的文档节点
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (String id : idList) {
+                List<Map<String, Object>> fileList = neo4jService.findFileById(id);
+                if (fileList.size() > 1) {
+                    // 把关系数据 → 提取出 end（文档节点）
+                    List<Map<String, Object>> docNodeList = new ArrayList<>();
+                    for (Map<String, Object> relationMap : fileList) {
+                        // 从关系里取出 文档节点 end
+                        Map<String, Object> docNode = (Map<String, Object>) relationMap.get("end");
+                        docNodeList.add(docNode);
+                    }
+
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("clusterId", id);
+                    item.put("documentCount", fileList.size());
+                    item.put("documentList", docNodeList); // 这里存纯文档节点！
+                    result.add(item);
+                }
+            }
+            int crossDosCount = 0;
+            for (int i = 0; i < Math.min(CROSS_DOC_Multi_HOP, result.size()); i++) {
+                int randomIndex = random.nextInt(result.size());
+                Map<String, Object> randomCluster = result.remove(randomIndex);
+                // 获取随机id下的所有文档
+                List<Map<String, String>> docList = (List<Map<String, String>>) randomCluster.get("documentList");
+                List<String> fileIdList = new ArrayList<>();
+                if (docList.size() == 2) {
+                    fileIdList.add(docList.get(0).get("id"));
+                    fileIdList.add(docList.get(1).get("id"));
+                }
+                // 如果超过 2 个，再随机取两个不同的
+                else {
+                    int index1 = random.nextInt(docList.size());
+                    int index2 = random.nextInt(docList.size());
+
+                    // 防止重复
+                    while (index1 == index2) {
+                        index2 = random.nextInt(docList.size());
+                    }
+                    fileIdList.add(docList.get(index1).get("id"));
+                    fileIdList.add(docList.get(index2).get("id"));
+                }
+                List<DoFile> fileList = fileService.getFilesById(fileIdList);
+                StringBuilder promptSb = new StringBuilder();
+                for (int j = 0; j < fileList.size(); j++) {
+                    promptSb.append("文档").append(j + 1).append("：")
+                            .append(fileList.get(j).getContent())
+                            .append("\n\n");
+                }
+                String Cross_Dos_Prompt = String.format(PromptTemplates.Generation_CROSS_DOS, promptSb.toString());
+
+                //调用大模型生成多跳问答对
+                TestSetListResult crossDosList = chatClient.prompt()
+                        .user(Cross_Dos_Prompt)
+                        .options(options)
+                        .call()
+                        .entity(TestSetListResult.class);
+
+                for (TestSetResult item : crossDosList.testSetResultList()) {
+                    TestSet testSet = new TestSet();
+                    String fileId = fileList.stream()
+                            .map(DoFile::getFileId)  // 提取 id
+                            .map(String::valueOf) // 转字符串
+                            .collect(Collectors.joining(","));
+                    testSet.setFileId(fileId);
+                    testSet.setQuestion(item.question());
+                    testSet.setAnswer(item.answer());
+                    testSet.setAccording(item.according());
+                    testSet.setType(TestSet.Type.CROSS_DOC_Multi_HOP);
+                    testSets.add(testSet);
+                    crossDosCount++;
+                }
+
+                log.info("多跳进度：{}% ({}/{})", (i + 1) * 100 / CROSS_DOC_Multi_HOP, i + 1, CROSS_DOC_Multi_HOP);
+                TextUtils.printProgress(i + 1, CROSS_DOC_Multi_HOP, "多跳生成进度");
+
+            }
+            log.info("跨文档问题答案对已经生成完成，跨文档问题的个数为：{}", crossDosCount);
+            // log.info("总数：{}", singleCount+multiCount+crossDosCount);
 
             // ========= 4.主题级（Topic-Level）问题生成 =========
             int topicLevelCount = 0;
@@ -276,10 +273,10 @@ public class GenTestSetService {
 
                 // 调用主题级生成模板
                 String topicPrompt = String.format(PromptTemplates.Generation_SUMMARY_LEVEL, promptSb.toString());
-                BeanOutputConverter<GeneratedQuestions> testSetConverter = new BeanOutputConverter<>(GeneratedQuestions.class);
-                OpenAiChatOptions options = OpenAiChatOptions.builder()
+                BeanOutputConverter<GeneratedQuestions> testSetConverterGenerated = new BeanOutputConverter<>(GeneratedQuestions.class);
+                options = OpenAiChatOptions.builder()
                         .temperature(0.1)
-                        .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverter.getJsonSchema()))
+                        .responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_SCHEMA, testSetConverterGenerated.getJsonSchema()))
                         .build();
 
                 // 调用大模型
@@ -288,18 +285,6 @@ public class GenTestSetService {
                         .options(options)
                         .call()
                         .entity(GeneratedQuestions.class);
-
-                // 组装 TestSet
-//                for (TestSetResult item : topicResult.testSetResultList()) {
-//                    TestSet testSet = new TestSet();
-//                    testSet.setFileId(String.join(",", topicDocIds)); // 保存该主题下所有文档ID
-//                    testSet.setType(TestSet.Type.SUMMARY_LEVEL); // 新增类型
-//                    testSet.setQuestion(item.question());
-//                    testSet.setAnswer(item.answer());
-//                    testSet.setAccording(item.according());
-//                    testSets.add(testSet);
-//                    topicLevelCount++;
-//                }
                 for (GeneratedQuestions.User user : topicResult.users) {
                     for (GeneratedQuestions.Task task : user.tasks) {
                         for (GeneratedQuestions.QAPair qa : task.questions) {

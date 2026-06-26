@@ -1,6 +1,6 @@
 package com.bistu.hkgrag.Evaluation;
 
-import com.bistu.hkgrag.llm.agent.TestMultiAgent;
+import com.bistu.hkgrag.llm.agent.MultiAgent;
 import com.bistu.hkgrag.llm.evaluation.AssessService;
 import com.bistu.hkgrag.llm.evaluation.EvaluationUtils;
 import com.bistu.hkgrag.llm.evaluation.Evaluator;
@@ -28,11 +28,11 @@ import java.util.function.Function;
 @SpringBootTest
 public class Evaluation {
     private static final Logger log = LoggerFactory.getLogger(Evaluation.class);
-    private final TestMultiAgent multiAgent;
+    private final MultiAgent multiAgent;
     private final BaseLineService baseLineService;
     private final AssessService assessService;
 
-    public Evaluation(@Autowired TestMultiAgent multiAgent,
+    public Evaluation(@Autowired MultiAgent multiAgent,
                       @Autowired BaseLineService baseLineService,
                       @Autowired AssessService assessService) {
         this.multiAgent = multiAgent;
@@ -44,14 +44,15 @@ public class Evaluation {
     @Order(1)
     public void testSet() {
         String inputPath = "src/main/resources/data/test_set.jsonl";
-        String outputPath = "src/main/resources/data/result/NaiveRAG_test11.jsonl";
+        String outputPath = "src/main/resources/data/result/HKGRAG-v2-1_QA.jsonl";
         try {
             List<TestSet> testSetList = TextUtils.readJsonlToList(inputPath, TestSet.class);
             List<EvalRecord> records = new ArrayList<>();
             log.info("待测试{}个问题", testSetList.size());
             for (int i = 0; i < testSetList.size(); i++) {
                 TestSet t = testSetList.get(i);
-                String pred = baseLineService.naiveRAG(t.getQuestion()).getAnswer();
+                String pred= multiAgent.testMultiAgent(t.getQuestion());
+              //  String pred = baseLineService.naiveRAG(t.getQuestion()).getAnswer();
                 EvalRecord record = new EvalRecord();
                 record.setFileId(t.getFileId());
                 record.setType(t.getType());
@@ -71,9 +72,9 @@ public class Evaluation {
     @Order(2)
     public void evaluation() {
         try {
-            String inputPath = "src/main/resources/data/leanRag_predict1.jsonl";
-            String detailOutputPath = "src/main/resources/data/result/evaluation/LeanRAG_Detail.jsonl";
-            String summaryOutputPath = "src/main/resources/data/result/evaluation/LeanRAG_Summary.txt";
+            String inputPath = "src/main/resources/data/result/HKGRAG-v2-1_QA.jsonl";
+            String detailOutputPath = "src/main/resources/data/result/evaluation/HKGRAG-v2-1_Detail.jsonl";
+            String summaryOutputPath = "src/main/resources/data/result/evaluation/HKGRAG-v2-1_Summary.txt";
             List<EvalRecord> evalRecords = TextUtils.readJsonlToList(inputPath, EvalRecord.class);
             EvalSummary summary = Evaluator.evaluate(evalRecords, detailOutputPath, summaryOutputPath);
             Assertions.assertNotNull(summary);
@@ -85,9 +86,9 @@ public class Evaluation {
     @Test
     @Order(3)
     public void testAssessService() {
-        String inputPath = "src/main/resources/data/leanRag_predict1.jsonl";
-        String detailOutputPath = "src/main/resources/data/result/modelEvaluate/LeanRAG_LLMAssess_detail.jsonl";
-        String resultOutputPath = "src/main/resources/data/result/modelEvaluate/LeanRAG_LLMAssess_result.jsonl";
+        String inputPath = "src/main/resources/data/result/HKGRAG-v2-1_QA.jsonl";
+        String detailOutputPath = "src/main/resources/data/result/modelEvaluate/HKGRAG-v2.1_LLMAssess_detail.jsonl";
+        String resultOutputPath = "src/main/resources/data/result/modelEvaluate/HKGRAG-v2.1_LLMAssess_result.jsonl";
 
         int corePoolSize = 5;
         int maximumPoolSize = 10;
@@ -143,10 +144,11 @@ public class Evaluation {
     @Test
     @Order(5)
     public void runAllLLMAssess() {
+        String inputDir="src/main/resources/data/result/evaluation/";
         String resultDir = "src/main/resources/data/result/modelEvaluate/";
-        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "MultiAgent"};
+        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "HKGRAG-v2-1","LeanRAG"};
 
-        int corePoolSize = 5;
+        int corePoolSize = 3;
         int maximumPoolSize = 10;
         long keepAliveTime = 60L;
         BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(200);
@@ -157,12 +159,12 @@ public class Evaluation {
                 corePoolSize, maximumPoolSize, keepAliveTime, TimeUnit.SECONDS,
                 workQueue, threadFactory, handler);
 
-        // 方法名 -> LLM评分 (correctness, contentComprehensiveness, diversity, overall)
+        // 方法名 -> LLM评分 (contentComprehensiveness, empowerment, diversity, overall)
         Map<String, Map<String, Double>> allLLMScores = new LinkedHashMap<>();
 
         try {
             for (String method : methods) {
-                String qaPath = resultDir + method + "_QA.jsonl";
+                String qaPath = inputDir + method + "_QA.jsonl";
                 String detailPath = resultDir + method + "_LLMAssess_detail.jsonl";
                 String resultPath = resultDir + method + "_LLMAssess_result.jsonl";
 
@@ -198,10 +200,10 @@ public class Evaluation {
                 TextUtils.writeJsonl(resultPath, List.of(llmScore));
 
                 allLLMScores.put(method, llmScore);
-                log.info("[{}] LLM 评估完成: correctness={:.2f}, comprehensiveness={:.2f}, diversity={:.2f}, overall={:.2f}",
+                log.info("[{}] LLM 评估完成: comprehensiveness={:.2f}, empowerment={:.2f}, diversity={:.2f}, overall={:.2f}",
                         method,
-                        llmScore.get("correctness"),
-                        llmScore.get("contentComprehensiveness"),
+                        llmScore.get("comprehensiveness"),
+                        llmScore.get("empowerment"),
                         llmScore.get("diversity"),
                         llmScore.get("overall"));
             }
@@ -226,7 +228,7 @@ public class Evaluation {
             writer.write("==================== 四种 RAG 方法 LLM 评估结果对比 ====================\n\n");
 
             String header = String.format("%-15s %12s %22s %10s %10s",
-                    "Method", "Correctness", "Comprehensiveness", "Diversity", "Overall");
+                    "Method", "Comprehensiveness", "Empowerment", "Diversity", "Overall");
             writer.write(header);
             writer.newLine();
             writer.write("-----------------------------------------------------------------------------------\n");
@@ -235,8 +237,8 @@ public class Evaluation {
                 Map<String, Double> s = entry.getValue();
                 writer.write(String.format("%-15s %12.2f %22.2f %10.2f %10.2f",
                         entry.getKey(),
-                        s.get("correctness"),
                         s.get("contentComprehensiveness"),
+                        s.get("empowerment"),
                         s.get("diversity"),
                         s.get("overall")));
                 writer.newLine();
@@ -257,9 +259,9 @@ public class Evaluation {
      */
     @Test
     @Order(6)
-    public void reevaluateFromQA() {
+    public void revaluateFromQA() {
         String resultDir = "src/main/resources/data/result/evaluation/";
-        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "MultiAgent"};
+        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "HKGRAG-v2-1","LeanRAG"};
 
         Map<String, Map<String, Double>> allScores = new LinkedHashMap<>();
 
@@ -296,7 +298,7 @@ public class Evaluation {
             }
 
             // 写入新的对比表格
-            EvaluationUtils.writeComparisonTable(allScores, resultDir + "All_Methods_Comparison_v2.txt");
+            EvaluationUtils.writeComparisonTable(allScores, resultDir + "All_Methods_Comparison_v3.txt");
             log.info("========== 全部重新评估完成，新表格已生成: All_Methods_Comparison_v2.txt ==========");
 
         } catch (Exception e) {

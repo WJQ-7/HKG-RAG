@@ -204,43 +204,44 @@ public class EvaluationUtils {
      * 计算三类评分的平均分，并分别返回
      *
      * @param results 评估结果列表
-     * @return 包含三类平均分的 Map：contentComprehensiveness、diversity、overall
+     * @return 包含三类平均分的 Map：contentComprehensiveness、empowerment、diversity、overall
      */
     public static Map<String, Double> llmScore(List<AssessService.AssessResult> results) {
         Map<String, Double> scoreMap = new HashMap<>();
 
         // 空值防护
         if (results == null || results.isEmpty()) {
-            scoreMap.put("correctness", 0.0);
             scoreMap.put("contentComprehensiveness", 0.0);
+            scoreMap.put("empowerment", 0.0);
             scoreMap.put("diversity", 0.0);
             scoreMap.put("overall", 0.0);
             return scoreMap;
         }
 
         // 累加总分
-        int totalCorrect = 0;
-        int totalContent = 0;
+        int totalComprehensive = 0;
+        int totalEmpowerment = 0;
         int totalDiversity = 0;
         int totalOverall = 0;
         int count = results.size();
 
         for (AssessService.AssessResult result : results) {
-            totalCorrect += result.correctness().score();
-            totalContent += result.contentComprehensiveness().score();
+            totalComprehensive += result.contentComprehensiveness().score();
+            totalEmpowerment += result.empowerment().score();
             totalDiversity += result.diversity().score();
             totalOverall += result.overall().score();
         }
 
+
         // 计算每类均分（保留小数）
-        double avgCorrect = (double) totalCorrect / count;
-        double avgContent = (double) totalContent / count;
+        double avgComprehensive = (double) totalComprehensive / count;
+        double avgEmpower = (double) totalEmpowerment / count;
         double avgDiversity = (double) totalDiversity / count;
         double avgOverall = (double) totalOverall / count;
 
         // 存入结果并返回
-        scoreMap.put("correctness", avgCorrect);
-        scoreMap.put("contentComprehensiveness", avgContent);
+        scoreMap.put("contentComprehensiveness", avgComprehensive);
+        scoreMap.put("empowerment", avgEmpower);
         scoreMap.put("diversity", avgDiversity);
         scoreMap.put("overall", avgOverall);
 

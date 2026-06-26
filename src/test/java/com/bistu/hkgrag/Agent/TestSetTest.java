@@ -2,7 +2,7 @@ package com.bistu.hkgrag.Agent;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 
-import com.bistu.hkgrag.llm.agent.TestMultiAgent;
+import com.bistu.hkgrag.llm.agent.MultiAgent;
 import com.bistu.hkgrag.llm.service.BaseLineService;
 import com.bistu.hkgrag.llm.model.agent.EvalRecord;
 import com.bistu.hkgrag.llm.model.agent.RagResult;
@@ -21,11 +21,11 @@ import java.util.stream.Collectors;
 
 @SpringBootTest(classes = com.bistu.hkgrag.HkgRagApplication.class)
 public class TestSetTest {
-    private final TestMultiAgent multiAgent;
+    private final MultiAgent multiAgent;
     private final BaseLineService baseLineService;
 
 
-    public TestSetTest(@Autowired TestMultiAgent multiAgent,
+    public TestSetTest(@Autowired MultiAgent multiAgent,
                        @Autowired BaseLineService baseLineService) {
         this.multiAgent = multiAgent;
         this.baseLineService = baseLineService;

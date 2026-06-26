@@ -1,52 +1,40 @@
 package com.bistu.hkgrag.llm.model.extraction;
 
-import com.bistu.hkgrag.dao.neo4j.model.Triple;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * 模型抽取的关系schema表
- * @param subject 主实体
- * @param predicate 属性
- * @param object 客体
- * @param type 三元组类型
- * @param subjectId 主实体id
- * @param subjectType 主实体类型
- * @param objectId 客体id
- * @param objectType 客体类型
+ * 模型抽取的关系 record（LLM 响应的反序列化 record）
+ * 注意：这是 LLM 抽取阶段的中间 record，不直接对应 Neo4j 的 Relation 类。
+ * 不再依赖 LLM 返回 ID，只用实体名称来关联实体。
+ * 不再使用谓词（predicate），关系含义完全由 description 的自然语言描述表达。
+ *
+ * @param sourceName   源实体名称
+ * @param targetName   目标实体名称
+ * @param sourceType   源实体类型
+ * @param targetType   目标实体类型
+ * @param description  关系的自然语言描述（即关系本身）
  */
-@Schema(description = "关系三元组实体")
+@Schema(description = "关系信息")
 public record Relation(
-        @JsonProperty(value = "subject", required = true)
-        @Schema(description = "主实体名称", requiredMode = Schema.RequiredMode.REQUIRED)
-        String subject,
+        @JsonProperty(value = "sourceName", required = true)
+        @Schema(description = "源实体名称", requiredMode = Schema.RequiredMode.REQUIRED)
+        String sourceName,
 
-        @JsonProperty(value = "predicate", required = true)
-        @Schema(description = "谓词（关系）", requiredMode = Schema.RequiredMode.REQUIRED)
-        String predicate,
+        @JsonProperty(value = "targetName", required = true)
+        @Schema(description = "目标实体名称", requiredMode = Schema.RequiredMode.REQUIRED)
+        String targetName,
 
-        @JsonProperty(value = "object", required = true)
-        @Schema(description = "客体实体名称", requiredMode = Schema.RequiredMode.REQUIRED)
-        String object,
+        @JsonProperty(value = "sourceType", required = true)
+        @Schema(description = "源实体类型", requiredMode = Schema.RequiredMode.REQUIRED)
+        String sourceType,
 
-        @JsonProperty(value = "type", required = true)
-        @Schema(description = "三元组类型：固定为 RELATION")
-        Triple.Type type,
+        @JsonProperty(value = "targetType", required = true)
+        @Schema(description = "目标实体类型", requiredMode = Schema.RequiredMode.REQUIRED)
+        String targetType,
 
-        @JsonProperty(value = "subjectId", required = true)
-        @Schema(description = "主实体唯一ID", requiredMode = Schema.RequiredMode.REQUIRED)
-        String subjectId,
-
-        @JsonProperty(value = "subjectType", required = true)
-        @Schema(description = "主实体类型", requiredMode = Schema.RequiredMode.REQUIRED)
-        String subjectType,
-
-        @JsonProperty(value = "objectId", required = true)
-        @Schema(description = "客体实体唯一ID", requiredMode = Schema.RequiredMode.REQUIRED)
-        String objectId,
-
-        @JsonProperty(value = "objectType", required = true)
-        @Schema(description = "客体实体类型", requiredMode = Schema.RequiredMode.REQUIRED)
-        String objectType
+        @JsonProperty(value = "description", required = true)
+        @Schema(description = "关系的自然语言描述，描述两个实体之间的关联", requiredMode = Schema.RequiredMode.REQUIRED)
+        String description
 ) {
 }

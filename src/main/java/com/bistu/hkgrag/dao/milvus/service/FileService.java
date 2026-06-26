@@ -39,7 +39,8 @@ import java.util.stream.IntStream;
 @Service
 public class FileService {
     //定义file表
-    private static final String COLLECTION_NAME = "file";
+    @Value("${HKG-RAG.milvus.File-Collection}")
+    private String COLLECTION_NAME = "file";
     //定义向量维度
     private static final int VECTOR_DIM = 2560;
     private final MilvusClientV2 client;

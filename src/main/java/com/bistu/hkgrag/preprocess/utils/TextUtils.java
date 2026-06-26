@@ -1,7 +1,6 @@
 package com.bistu.hkgrag.preprocess.utils;
 
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
-import com.bistu.hkgrag.dao.neo4j.model.Triple;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knuddels.jtokkit.api.IntArrayList;
@@ -85,25 +84,23 @@ public class TextUtils {
         return new ArrayList<>();
     }
 
+
     /**
-     * 大模型抽取后的fileEntities、contentEntities、relations这三个jsonl文件都是Triple的映射
-     * 将指定jsonl文件映射成Triple
-     * @param filePath 指定文件路径
-     * @return 三元组列表
+     * 将 JSONL 文件读取为指定类型的对象列表（泛型方法）
      */
-    public static List<Triple> readJsonlToTriple(String filePath) {
-        List<Triple> triples = new ArrayList<>();
+    public static <T> List<T> readJsonl(String filePath, Class<T> clazz) {
+        List<T> result = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
             String line;
             while ((line = br.readLine()) != null) {
-                Triple t = objectMapper.readValue(line, Triple.class);
-                triples.add(t);
+                T obj = objectMapper.readValue(line, clazz);
+                result.add(obj);
             }
         } catch (Exception e) {
             e.printStackTrace();
-            log.error("读取指定目录下的Jsonl文件映射成Triple失败");
+            log.error("读取 JSONL 文件失败: {}", filePath);
         }
-        return triples;
+        return result;
     }
 
 //    /**

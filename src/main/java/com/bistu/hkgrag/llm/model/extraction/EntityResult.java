@@ -5,11 +5,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * 模型抽取实体的结果类
- * @param EntityList 抽取出的实体列表
+ * 模型抽取实体的结果类（LLM 响应反序列化容器）
+ * @param entityList 抽取出的实体列表
  */
 public record EntityResult(
         @JsonProperty(value = "entities", required = true)
-        List<Entity> EntityList
+        List<Entity> entityList
 ) {
 }

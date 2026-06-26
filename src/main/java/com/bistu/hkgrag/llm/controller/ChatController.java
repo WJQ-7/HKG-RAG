@@ -1,6 +1,6 @@
 package com.bistu.hkgrag.llm.controller;
 
-import com.bistu.hkgrag.llm.agent.TestMultiAgent;
+import com.bistu.hkgrag.llm.agent.MultiAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,9 +13,9 @@ import java.util.Map;
 @RestController
 public class ChatController {
     private static Logger log = LoggerFactory.getLogger(ChatController.class);
-    private TestMultiAgent agent;
+    private MultiAgent agent;
 
-    public ChatController(@Autowired TestMultiAgent agent) {
+    public ChatController(@Autowired MultiAgent agent) {
         this.agent = agent;
     }
 

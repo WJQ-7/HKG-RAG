@@ -3,7 +3,7 @@ package com.bistu.hkgrag.llm.agent;
 import java.util.List;
 
 public class Utils {
-    public static String buildHistory(List<TestMultiAgent.Generation> generations) {
+    public static String buildHistory(List<MultiAgent.Generation> generations) {
         if (generations == null || generations.isEmpty()) {
             return "暂无历史执行记录";
         }
@@ -11,7 +11,7 @@ public class Utils {
 
         for (int i = 0; i < generations.size(); i++) {
 
-            TestMultiAgent.Generation g = generations.get(i);
+            MultiAgent.Generation g = generations.get(i);
 
             sb.append("===== 第")
                     .append(i + 1)
@@ -24,11 +24,11 @@ public class Utils {
             sb.append("【工具调用记录】\n");
 
             if (g.answerResult() != null
-                    && g.answerResult().allToolCalls() != null
-                    && !g.answerResult().allToolCalls().isEmpty()) {
+                    && g.answerResult().toolCalls() != null
+                    && !g.answerResult().toolCalls().isEmpty()) {
 
                 for (IntentAgent.ToolCallTrace trace :
-                        g.answerResult().allToolCalls()) {
+                        g.answerResult().toolCalls()) {
 
                     sb.append("工具名称: ")
                             .append(trace.toolName())
@@ -38,9 +38,9 @@ public class Utils {
                             .append(trace.input())
                             .append("\n");
 
-//                    sb.append("检索结果摘要: ")
-//                            .append(trace.retrievedContent())
-//                            .append("\n");
+                    sb.append("检索结果摘要: ")
+                            .append(trace.summary())
+                            .append("\n");
                 }
             } else {
                 sb.append("无工具调用记录\n\n");
@@ -58,9 +58,19 @@ public class Utils {
                     .append(g.evaluationResult().reason())
                     .append("\n");
 
-            sb.append("改进建议:\n")
-                    .append(g.evaluationResult().suggestion())
-                    .append("\n\n");
+            // 传递结构化诊断信息
+            if (g.evaluationResult().diagnosis() != null) {
+                EvaluationAgent.EvaluationResult.Diagnosis d = g.evaluationResult().diagnosis();
+                sb.append("【诊断信息-供问题分析智能体参考】\n");
+                sb.append("根本问题: ").append(d.problemType()).append("\n");
+                sb.append("诊断详情: ").append(d.detail()).append("\n");
+                if (d.suggestionDetail() != null && !d.suggestionDetail().isEmpty()) {
+                    sb.append("修改建议: ").append(d.suggestionDetail()).append("\n");
+                }
+                sb.append("下轮策略: ").append(d.nextRoundStrategy()).append("\n");
+            }
+
+            sb.append("\n");
         }
 
         return sb.toString();
@@ -68,42 +78,43 @@ public class Utils {
 
     /**
      * 用于评估智能体查看检索依据
+     * 仅取最后一轮工具调用的检索结果，避免多轮累积导致token超限
      */
     public static String buildEvidence(IntentAgent.AnswerResult answerResult,EvidenceStore evidenceStore) {
 
         if (answerResult == null
-                || answerResult.allToolCalls() == null
-                || answerResult.allToolCalls().isEmpty()) {
+                || answerResult.toolCalls() == null
+                || answerResult.toolCalls().isEmpty()) {
 
             return "无检索依据";
         }
 
+        // 仅取最后一个工具调用的结果
+        IntentAgent.ToolCallTrace trace = answerResult.toolCalls()
+                .get(answerResult.toolCalls().size() - 1);
+
         StringBuilder sb = new StringBuilder();
 
-        for (IntentAgent.ToolCallTrace trace :
-                answerResult.allToolCalls()) {
+        sb.append("====================================\n");
 
-            sb.append("====================================\n");
+        sb.append("工具名称：")
+                .append(trace.toolName())
+                .append("\n");
 
-            sb.append("工具名称：")
-                    .append(trace.toolName())
-                    .append("\n");
+        sb.append("输入参数：")
+                .append(trace.input())
+                .append("\n");
 
-            sb.append("输入参数：")
-                    .append(trace.input())
-                    .append("\n");
+        String evidenceContent =
+                evidenceStore.get(trace.evidenceId());
 
-            String evidenceContent =
-                    evidenceStore.get(trace.evidenceId());
-
-            sb.append("回答依据：\n")
-                    .append(
-                            evidenceContent == null
-                                    ? "证据不存在"
-                                    : evidenceContent
-                    )
-                    .append("\n\n");
-        }
+        sb.append("回答依据：\n")
+                .append(
+                        evidenceContent == null
+                                ? "证据不存在"
+                                : evidenceContent
+                )
+                .append("\n\n");
 
         return sb.toString();
     }

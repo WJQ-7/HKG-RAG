@@ -1,7 +1,6 @@
 package com.bistu.hkgrag.llm.agent;
 
 
-import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +11,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -39,6 +39,18 @@ public class IntentAgent {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final EvidenceStore evidenceStore;
+
+    /**
+     * IntentAgent 内部独立的局部记忆，限制窗口大小。
+     * 每次 generationAnswer() 调用前清空，保证单次进入的记忆独立且不会撑爆 token。
+     * 只保留最近的20条消息
+     */
+    private final ChatMemory localMemory = MessageWindowChatMemory.builder()
+            .maxMessages(20)
+            .build();
+    private final MessageChatMemoryAdvisor localMemoryAdvisor =
+            MessageChatMemoryAdvisor.builder(localMemory).build();
+
     /**
      * ✅ 用于记录 tool 调用轨迹（关键）
      */
@@ -89,26 +101,6 @@ public class IntentAgent {
 
     ) {}
 
-    @Schema(description = "子问题回答结果")
-    public record SubQuestionAnswer(
-
-            @JsonProperty(required = true)
-            @Schema(description = "子问题")
-            String subQuestion,
-
-            @JsonProperty(required = true)
-            @Schema(description = "工具调用轨迹")
-            List<ToolCallTrace> toolCalls,
-
-            @JsonProperty(required = true)
-            @Schema(description = "子问题答案")
-            String answer,
-
-            @JsonProperty(required = true)
-            @Schema(description = "子问题是否成功")
-            boolean success
-    ) {}
-
     @Schema(description = "回答结果")
     public record AnswerResult(
             @JsonProperty(required = true)
@@ -120,56 +112,66 @@ public class IntentAgent {
             String finalAnswer,
 
             @JsonProperty(required = true)
-            @Schema(description = "子问题回答")
-            List<SubQuestionAnswer> subAnswers,
-
-            @JsonProperty(required = true)
-            @Schema(description = "全局工具调用轨迹")
-            List<ToolCallTrace> allToolCalls
+            @Schema(description = "工具调用轨迹")
+            List<ToolCallTrace> toolCalls
     ) {}
 
     //TODO 这里可以写一个思维链作为系统提示词 遇到什么问题执行固定使用什么工具
     public static final String system_COT = """
-            你是一个“意图解析 + 工具调用智能体”。
+            你是一个"意图解析 + 工具调用智能体"。
             
             你的职责：
             1. 根据输入的结构化问题分析结果，判断需要调用哪些工具
             2. 调用工具获取知识
             
-            【工具选择规则】
-            1. 用户问题询问：
-               - 原因
-               - 为什么
-               - 如何
-               - 背景
-               - 经过
-               - 影响
-               - 事件说明
-            对于所有问题可以优先使用 searchFileByQuery(原始用户问题)，回答不出可可以考虑其他问题
-            2. 当问题查询的是人名、地名、机构名及其属性时调用。
-               - 某个人是谁
-               - 某机构是什么
-               - 某项目负责人
-               - 某实体属性
-               使用 searchEntityByName
+            【按问题类型的工具选择规则】
             
-            4. 用户问题涉及主题归纳：
-               使用 searchFileByTopic
-            5. 不确定时：
-               优先 searchFileByQuery
+            1. SPECIFIC_DETAIL（具体细节问题）：
+               检索策略：
+               - 直接使用 searchFileByQuery(query=原始问题)，检索与问题语义最匹配的文档内容
+               - 如果文档检索无结果，尝试用 topics 进行主题检索兜底
             
+            2. MULTI_HOP（多跳推理问题）：
+               可用工具：getEntityTriples（返回实体属性 + 最多10条三元组）
+               三元组格式：(实体名) -[关系类型]-> (邻居实体名)
+               
+               多跳推理步骤：
+               
+               第一步（定位起始实体）：
+               - 使用 getEntityTriples(names=关键词)，获取实体属性和关联三元组
+               - 仔细阅读返回的每一条三元组，理解实体有哪些关联关系
+               
+               第二步（语义匹配三元组）：
+               - 根据问题语义，从三元组列表中找到最相关的那条
+               - 例如：问题问"张三所在部门参与的涉密项目"
+                 返回三元组：1. (张三) -[属于]-> (计算机学院)  2. (张三) -[指导]-> (李四)
+                 选择第1条（"属于"表示归属关系）
+               
+               第三步（从三元组提取邻居名，继续扩展）：
+               - 提取邻居实体名（如"计算机学院"）
+               - 用邻居名再次调用 getEntityTriples(names=["计算机学院"])
+               - 从返回的三元组中继续匹配与问题相关的（如"参与项目"关系）
+               - 可重复此步骤直到获得足够信息
+               
+               辅助工具：
+               - searchFileByQuery：当图谱信息不足时，用用户的原始问题全文检索文档补充
+            
+            3. GLOBAL_ABSTRACT（全局抽象问题）：
+               检索策略：
+               - 优先使用 searchFileByTopic，参数用 topics（相关主题）+ query（原始问题）
+               - 可使用 searchFileByQuery 辅助进行全文语义检索作为补充
             
             【工具调用约束】
             - 每轮至少选用一个检索工具
-            - 当调用工具时，必须优先使用“问题分析智能体结果”中的内容作为参数来源。
-            - 禁止重复调用“相同工具 + 相同语义参数”
+            - 当调用工具时，必须优先使用"问题分析智能体结果"中的内容作为参数来源。
+            - 禁止重复调用"相同工具 + 相同语义参数"
             - 若某工具已对某语义问题返回结果，则必须：
               1. 更换检索维度（实体 → 主题 → query）
               2. 或直接终止该工具调用
             - 禁止通过改写词序、增删无意义词重复查询
             - 每次工具调用必须引入新的信息增量目标
-            - 工具调用必须形成“信息递进链”，不能循环
-            
+            - 当关键词检索不到结果时，尝试使用 topics 进行主题检索
+            - 多跳问题：使用 getEntityTriples 获取三元组，从三元组中提取邻居实体名，用邻居名再次调用 getEntityTriples 继续扩展
             
             你必须优先使用工具，不允许跳过工具直接回答。
             """;
@@ -177,119 +179,76 @@ public class IntentAgent {
             # 角色：你是一个“意图解析与工具调用智能体”。
             
             # 任务：
-            1.你需要根据“问题分析智能体”的结果去选择检索工具，将问题分析智能体的相关结果作为检索工具的参数。
-            2.自主判断应该调用哪些检索工具。
-            3.考虑使用哪个工具更可能获得问题/子问题的答案。
-          
+                1.你需要根据“问题分析智能体”的结果去选择检索工具，将问题分析智能体的相关结果作为检索工具的参数。
+                2.自主判断应该调用哪些检索工具。
+                3.考虑使用哪个工具更可能获得问题/子问题的答案。
+                
             # 问题分析智能体结果
             用户问题：%s
             问题类型：%s
-            相关实体：%s
+            关键词：%s
             相关主题：%s
-            子问题：%s
-            检索规划：%s
-            规划原因：%s
             
-            请开始自主选择工具并完成问题回答。
-            """;
-
-    public static final String ANSWER_PROMPT = """
-            # 角色：你是一个问答智能体。
-            # 任务：
-            1.你需要根据相关检索结果回答用户问题。
-            2.简单具体的问题需要依据检索结果进行简洁地回答，概述性问题需要更为发散的回答。
+            请根据以上分析结果，自主选择检索工具并完成问题回答。
             
-            # 回答要求
-            1. 回答必须**完全基于检索到的文档内容**，不允许编造、扩展或使用外部知识。
-            2. 回答语言要简洁、准确、通顺，符合用户问题的要求。
+            # 最终回答要求：
+            1. 回答必须完全基于检索到的文档内容，不允许编造、扩展或使用外部知识
+            2. 简单具体的问题需要依据检索结果简洁回答，概述性问题需要更为发散的回答
             3. 如果多个文档出现相同信息，进行汇总
             4. 如果证据不足，明确说明无法回答
-            
-            ## 输入
-            用户问题：
-            %s
-            相关信息：
-            %s
-            
-            要求：
-            
-            1.禁止使用外部知识
-            2.禁止编造
-            3.多个证据需要进行汇总
-            4.证据不足时明确说明无法回答
-            5.回答尽量完整
+            5. 回答尽量完整
             """;
-
     public AnswerResult generationAnswer(String question,QuestionAnalysisAgent.RetrievalPlanResponse plan, String conversationId) {
+
+        // 清空局部记忆，保证每次进入 IntentAgent 记忆干净
+        localMemory.clear(conversationId);
 
         String user_prompt = Retrieval_Prompt.formatted(
                 question,
                 plan.queryType(),
-                plan.entities(),
-                plan.topics(),
-                plan.subQuestions(),
-                plan.retrievalPlan(),
-                plan.reasoning()
+                plan.keywords(),
+                plan.topics()
         );
-        String system_prompt=system_COT;
-
+        String systemPrompt = system_COT;
 
         ChatResponse response = chatClient.prompt()
-                .system(system_prompt)
+                .system(systemPrompt)
                 .user(user_prompt)
                 .tools(retrievalTools)
                 .advisors(advisorSpec -> advisorSpec.param(
                         ChatMemory.CONVERSATION_ID,
                         conversationId
                 ))
-                .advisors(chatMemoryAdvisor,toolCallAdvisor)
+                .advisors(localMemoryAdvisor, toolCallAdvisor)
                 .call()
                 .chatResponse();
 
-//        List<Message> messages =
-//                chatMemory.get(conversationId);
-//
-//        messages.forEach(msg -> {
-//            log.info(
-//                    "type={} content={}",
-//                    msg.getClass().getSimpleName(),
-//                    msg.getText()
-//            );
-//        });
-        //获取工具调用记录
+        // 获取工具调用记录（从局部记忆中提取）
         List<ToolCallTrace> toolCallTraces =
-                extractToolTraces(conversationId);
-
+                extractToolTracesFromLocal(conversationId);
 
         // 获取回答
         String finalAnswer = response.getResult().getOutput().getText();
-        boolean success = (finalAnswer != null && !finalAnswer.isBlank());
 
-        SubQuestionAnswer subAnswer = new SubQuestionAnswer(
-                question,
-                toolCallTraces,
-                finalAnswer,
-                success
-        );
+        // 结束后清空局部记忆，释放内存
+        localMemory.clear(conversationId);
 
-        // 最终结果（严格匹配 6 个参数）
         return new AnswerResult(
                 question,
                 finalAnswer,
-                List.of(subAnswer),
                 toolCallTraces
         );
 
     }
 
     /**
-     * 提取调用工具的记录
+     * 从局部记忆中提取调用工具的记录
      * @param conversationId 记忆的id
      * @return 自定义工具记录
      */
-    private List<ToolCallTrace> extractToolTraces(String conversationId) {
-        //1.根据对话id从记忆中获取完整的消息列表
-        List<Message> messages = chatMemory.get(conversationId);
+    private List<ToolCallTrace> extractToolTracesFromLocal(String conversationId) {
+        //1.根据对话id从局部记忆中获取完整的消息列表
+        List<Message> messages = localMemory.get(conversationId);
         List<ToolCallTrace> toolCallTraces = new ArrayList<>();
         for(int i=0; i<messages.size(); i++) {
             Message message = messages.get(i);
