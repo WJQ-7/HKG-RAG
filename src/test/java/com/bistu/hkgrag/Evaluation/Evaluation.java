@@ -48,7 +48,7 @@ public class Evaluation {
     @Order(1)
     public void testSet() {
         String inputPath = "src/main/resources/data/datasets/Bistu/qa.jsonl";
-        String outputPath = "src/main/resources/data/datasets/Bistu/HKGRAG-mix_QA.jsonl";
+        String outputPath = "src/main/resources/data/datasets/Bistu/HKGRAG_QA.jsonl";
         try {
             List<TestSet> testSetList = TextUtils.readJsonlToList(inputPath, TestSet.class);
             List<EvalRecord> records = new ArrayList<>();
