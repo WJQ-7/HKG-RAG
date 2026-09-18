@@ -1,2 +1,11 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+src/main/resources/data/datasets/**/all_entities*.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/**/all_relations*.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/**/chunk.json filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/**/chunk.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/**/chunk_topic.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/UltraDomain/agriculture/agriculture.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/UltraDomain/cs/cs.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/UltraDomain/legal/legal.jsonl filter=lfs diff=lfs merge=lfs -text
+src/main/resources/data/datasets/UltraDomain/mix/mix.jsonl filter=lfs diff=lfs merge=lfs -text

@@ -32,20 +32,3 @@ build/
 ### VS Code ###
 .vscode/
 
-# ==========================================
-# HKG-RAG generated/intermediate data
-# ==========================================
-
-# Knowledge graph intermediate files
-src/main/resources/data/**/all_entities*.jsonl
-src/main/resources/data/**/all_relations*.jsonl
-src/main/resources/data/**/chunk.json
-src/main/resources/data/**/chunk.jsonl
-src/main/resources/data/**/chunk_topic.jsonl
-
-
-# UltraDomain raw documents
-src/main/resources/data/datasets/UltraDomain/agriculture/agriculture.jsonl
-src/main/resources/data/datasets/UltraDomain/cs/cs.jsonl
-src/main/resources/data/datasets/UltraDomain/legal/legal.jsonl
-src/main/resources/data/datasets/UltraDomain/mix/mix.jsonl
