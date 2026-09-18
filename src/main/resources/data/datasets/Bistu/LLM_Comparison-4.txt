@@ -1,0 +1,22 @@
+==================== 四种 RAG 方法 LLM 评估结果对比 ====================
+
+Method          Comprehensiveness            Empowerment  Diversity    Overall
+-----------------------------------------------------------------------------------
+NaiveRAG                6.60                   5.58       3.14       5.28
+GraphRAG                4.10                   3.77       3.98       3.83
+LightRAG                6.12                   5.97       3.74       5.35
+LeanRAG                 4.58                   5.50       4.04       4.62
+HKGRAG                  7.11                   6.61       4.01       6.05
+
+==================== 文件清单 ====================
+  NaiveRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  NaiveRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  GraphRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  GraphRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  LightRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  LightRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  LeanRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  LeanRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  HKGRAG_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情
+  HKGRAG_LLMAssess_result.jsonl  -> LLM 评分汇总
+  All_Methods_LLM_Comparison-v1.txt -> 本文件（四种方法 LLM 评分对比）

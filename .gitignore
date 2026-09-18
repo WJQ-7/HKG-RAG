@@ -43,14 +43,6 @@ src/main/resources/data/**/chunk.json
 src/main/resources/data/**/chunk.jsonl
 src/main/resources/data/**/chunk_topic.jsonl
 
-# Detailed LLM judge records
-src/main/resources/data/datasets/**/*_LLMAssess_detail*.jsonl
-
-# Detailed generation/debug records
-src/main/resources/data/datasets/**/*_Detail.jsonl
-
-# Repeated comparison logs
-src/main/resources/data/datasets/**/LLM_Comparison-[1-5].txt
 
 # UltraDomain raw documents
 src/main/resources/data/datasets/UltraDomain/agriculture/agriculture.jsonl
