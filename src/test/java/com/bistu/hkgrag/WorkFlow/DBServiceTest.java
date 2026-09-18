@@ -85,10 +85,10 @@ public class DBServiceTest {
 
                 DoEntity doEntity = new DoEntity();
                 doEntity.setEntityId(neoEntity.getEntityId());
-                doEntity.setEntityName(neoEntity.getEntityName());
+                doEntity.setEntityName(safeSubstring(neoEntity.getEntityName(), 1024));
                 doEntity.setEntityType(neoEntity.getEntityType());
-                doEntity.setEntityDescription(neoEntity.getEntityDescription());
-                doEntity.setEntityInfo(neoEntity.getEntityInfo());
+                doEntity.setEntityDescription(safeSubstring(neoEntity.getEntityDescription(), 8192));
+                doEntity.setEntityInfo(safeSubstring(neoEntity.getEntityInfo(), 4096));
                 batchList.add(doEntity);
 
                 if (batchList.size() >= batchSize) {
@@ -346,6 +346,12 @@ public class DBServiceTest {
         boolean success = clusterService.insertClusters(batch);
         System.out.println(success ? "成功插入: " + size : "插入失败，批次大小: " + size);
         return success ? size : 0;
+    }
+
+    /** 按 Milvus schema maxLength 截断字段，防止插入报错 */
+    private String safeSubstring(String value, int maxLen) {
+        if (value == null) return "";
+        return value.length() > maxLen ? value.substring(0, maxLen) : value;
     }
 
     /**

@@ -50,7 +50,7 @@ public class UltraDomainEvaluation {
     private final AssessService assessService;
 
     // 输出目录
-    private static final String RESULT_DIR = "src/main/resources/data/result/UltraDomain/";
+    private static final String RESULT_DIR = "src/main/resources/data/datasets/UltraDomain/";
 
     // 并发配置
     private static final int CORE_POOL_SIZE = 3;
@@ -100,8 +100,8 @@ public class UltraDomainEvaluation {
 
     @Test
     @Order(6)
-    public void evaluateCS_HybridRAG() {
-        evaluateDomain("cs", "HybridRAG", q -> baseLineService.hybridRAG(q).getAnswer());
+    public void evaluateCS_NaiveRAG() {
+        evaluateDomain("cs", "NaiveRAG", q -> baseLineService.naiveRAG(q).getAnswer());
     }
 
     // ==================== legal 领域 ====================
@@ -207,8 +207,8 @@ public class UltraDomainEvaluation {
                 }
 
                 EvalRecord record = new EvalRecord();
-                record.setFileId((String) qa.getOrDefault("context_id", ""));
-                record.setType(TestSet.Type.SINGLE_HOP); // UltraDomain 默认单跳
+//                record.setFileId((String) qa.getOrDefault("context_id", ""));
+//                record.setType(TestSet.Type.SINGLE_HOP); // UltraDomain 默认单跳
                 record.setQuestion(question);
                 record.setPredAnswer(predAnswer != null ? predAnswer : "");
                 record.setGoldAnswer(goldAnswer);
@@ -219,18 +219,18 @@ public class UltraDomainEvaluation {
             TextUtils.writeJsonl(qaOutputPath, records);
             log.info("[{}|{}] QA 文件已写入: {}", domain, methodName, qaOutputPath);
 
-            // Step4: 词级评估
-            EvalSummary summary = Evaluator.evaluate(records, detailOutputPath, summaryOutputPath);
-            if (summary != null) {
-                log.info("[{}|{}] 词级评估完成: EM={:.4f}, F1={:.4f}, RougeL={:.4f}, Recall={:.4f}",
-                        domain, methodName,
-                        summary.overall().get("EM"),
-                        summary.overall().get("F1"),
-                        summary.overall().get("RougeL"),
-                        summary.overall().get("Recall"));
-            }
-
-            log.info("========== [{}|{}] 评估完成 ==========", domain, methodName);
+//            // Step4: 词级评估
+//            EvalSummary summary = Evaluator.evaluate(records, detailOutputPath, summaryOutputPath);
+//            if (summary != null) {
+//                log.info("[{}|{}] 词级评估完成: EM={:.4f}, F1={:.4f}, RougeL={:.4f}, Recall={:.4f}",
+//                        domain, methodName,
+//                        summary.overall().get("EM"),
+//                        summary.overall().get("F1"),
+//                        summary.overall().get("RougeL"),
+//                        summary.overall().get("Recall"));
+//            }
+//
+//            log.info("========== [{}|{}] 评估完成 ==========", domain, methodName);
 
         } catch (Exception e) {
             log.error("[{}|{}] 评估失败: {}", domain, methodName, e.getMessage(), e);

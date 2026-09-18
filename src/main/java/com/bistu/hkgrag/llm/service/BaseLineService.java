@@ -1,5 +1,6 @@
 package com.bistu.hkgrag.llm.service;
 
+import com.bistu.hkgrag.config.PromptConfig;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.dao.milvus.service.FileService;
 import com.bistu.hkgrag.llm.model.agent.RagResult;
@@ -19,28 +20,18 @@ public class BaseLineService {
     Logger log = LoggerFactory.getLogger(BaseLineService.class);
     private FileService fileService;
     private ChatClient chatClient;
+    private PromptConfig promptConfig;
 
     @Value("${HKG-RAG.retrieval.TopK}")
     int topK;
 
     public BaseLineService(@Autowired FileService fileService,
-                           @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient) {
+                           @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient,
+                           @Autowired PromptConfig promptConfig) {
         this.fileService = fileService;
         this.chatClient = chatClient;
+        this.promptConfig = promptConfig;
     }
-    public String prompt="""
-                    #你是一个专业的文档问答助手。
-                    
-                    #任务：根据检索到的文档内容回答用户问题
-                    
-                    #要求
-                    1. 回答必须**完全基于检索到的文档内容**，不允许编造、扩展或使用外部知识。
-                    2. 如果文档中没有相关答案，请直接回复：“根据提供的文档，未找到相关信息。”
-                    
-                    #输入：
-                    用户问题：%s
-                    相关文档：%s
-                    """;
 
     /**
      * 基于内容向量的bm25来检索生成
@@ -57,7 +48,7 @@ public class BaseLineService {
                         .append("文档名：").append(file.getFileName()).append("\n")
                         .append("文档内容：").append(file.getContent()).append("\n\n");
             }
-            String userPrompt = prompt.formatted(question, sb.toString());
+            String userPrompt = promptConfig.baselinePrompt().formatted(question, sb.toString());
             String response = chatClient.prompt(userPrompt).call().content();
             RagResult ragResult = new RagResult();
             ragResult.setAnswer(response);
@@ -85,7 +76,7 @@ public class BaseLineService {
                         .append("文档名：").append(file.getFileName()).append("\n")
                         .append("文档内容：").append(file.getContent()).append("\n\n");
             }
-            String userPrompt = prompt.formatted(question, sb.toString());
+            String userPrompt = promptConfig.baselinePrompt().formatted(question, sb.toString());
             String response = chatClient.prompt(userPrompt).call().content();
             RagResult ragResult = new RagResult();
             ragResult.setAnswer(response);
@@ -113,7 +104,7 @@ public class BaseLineService {
                         .append("文档名：").append(file.getFileName()).append("\n")
                         .append("文档内容：").append(file.getContent()).append("\n\n");
             }
-            String userPrompt = prompt.formatted(question, sb.toString());
+            String userPrompt = promptConfig.baselinePrompt().formatted(question, sb.toString());
             String response = chatClient.prompt(userPrompt).call().content();
             RagResult ragResult = new RagResult();
             ragResult.setAnswer(response);

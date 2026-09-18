@@ -1,6 +1,7 @@
 package com.bistu.hkgrag.Evaluation;
 
 import com.bistu.hkgrag.llm.agent.MultiAgent;
+import com.bistu.hkgrag.llm.agent.TestAgent;
 import com.bistu.hkgrag.llm.evaluation.AssessService;
 import com.bistu.hkgrag.llm.evaluation.EvaluationUtils;
 import com.bistu.hkgrag.llm.evaluation.Evaluator;
@@ -31,26 +32,30 @@ public class Evaluation {
     private final MultiAgent multiAgent;
     private final BaseLineService baseLineService;
     private final AssessService assessService;
+    private final TestAgent testAgent;
 
     public Evaluation(@Autowired MultiAgent multiAgent,
                       @Autowired BaseLineService baseLineService,
-                      @Autowired AssessService assessService) {
+                      @Autowired AssessService assessService,
+                      @Autowired TestAgent testAgent) {
         this.multiAgent = multiAgent;
         this.baseLineService = baseLineService;
         this.assessService = assessService;
+        this.testAgent = testAgent;
     }
 
     @Test
     @Order(1)
     public void testSet() {
-        String inputPath = "src/main/resources/data/test_set.jsonl";
-        String outputPath = "src/main/resources/data/result/HKGRAG-v2-1_QA.jsonl";
+        String inputPath = "src/main/resources/data/datasets/Bistu/qa.jsonl";
+        String outputPath = "src/main/resources/data/datasets/Bistu/HKGRAG-mix_QA.jsonl";
         try {
             List<TestSet> testSetList = TextUtils.readJsonlToList(inputPath, TestSet.class);
             List<EvalRecord> records = new ArrayList<>();
             log.info("待测试{}个问题", testSetList.size());
             for (int i = 0; i < testSetList.size(); i++) {
                 TestSet t = testSetList.get(i);
+             //  String pred=testAgent.test_Agent(t.getQuestion());
                 String pred= multiAgent.testMultiAgent(t.getQuestion());
               //  String pred = baseLineService.naiveRAG(t.getQuestion()).getAnswer();
                 EvalRecord record = new EvalRecord();
@@ -72,7 +77,7 @@ public class Evaluation {
     @Order(2)
     public void evaluation() {
         try {
-            String inputPath = "src/main/resources/data/result/HKGRAG-v2-1_QA.jsonl";
+            String inputPath = "src/main/resources/data/result/HKGRAG_QA.jsonl";
             String detailOutputPath = "src/main/resources/data/result/evaluation/HKGRAG-v2-1_Detail.jsonl";
             String summaryOutputPath = "src/main/resources/data/result/evaluation/HKGRAG-v2-1_Summary.txt";
             List<EvalRecord> evalRecords = TextUtils.readJsonlToList(inputPath, EvalRecord.class);
@@ -86,9 +91,9 @@ public class Evaluation {
     @Test
     @Order(3)
     public void testAssessService() {
-        String inputPath = "src/main/resources/data/result/HKGRAG-v2-1_QA.jsonl";
-        String detailOutputPath = "src/main/resources/data/result/modelEvaluate/HKGRAG-v2.1_LLMAssess_detail.jsonl";
-        String resultOutputPath = "src/main/resources/data/result/modelEvaluate/HKGRAG-v2.1_LLMAssess_result.jsonl";
+        String inputPath = "src/main/resources/data/result/LightRAG_QA.jsonl";
+        String detailOutputPath = "src/main/resources/data/result/modelEvaluate/LightRAG_LLMAssess_detail-1.jsonl";
+        String resultOutputPath = "src/main/resources/data/result/modelEvaluate/LightRAG_LLMAssess_result-1.jsonl";
 
         int corePoolSize = 5;
         int maximumPoolSize = 10;
@@ -144,13 +149,16 @@ public class Evaluation {
     @Test
     @Order(5)
     public void runAllLLMAssess() {
-        String inputDir="src/main/resources/data/result/evaluation/";
-        String resultDir = "src/main/resources/data/result/modelEvaluate/";
-        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "HKGRAG-v2-1","LeanRAG"};
-
-        int corePoolSize = 3;
-        int maximumPoolSize = 10;
-        long keepAliveTime = 60L;
+//        String inputDir="src/main/resources/data/result/evaluation/";
+//        String resultDir = "src/main/resources/data/result/modelEvaluate/";
+//        String[] methods = { "NaiveRAG", "HKGRAG-v2-1"};
+        String inputDir="src/main/resources/data/datasets/UltraDomain/mix/";
+        String resultDir = "src/main/resources/data/datasets/UltraDomain/mix/";
+        String[] methods = {"HKGRAG-mix"};
+//        String[] methods = {"NaiveRAG", "GraphRAG","LightRAG" ,"LeanRAG","HKGRAG"};
+        int corePoolSize = 8;
+        int maximumPoolSize = 20;
+        long keepAliveTime = 80L;
         BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(200);
         ThreadFactory threadFactory = Executors.defaultThreadFactory();
         RejectedExecutionHandler handler = new ThreadPoolExecutor.CallerRunsPolicy();
@@ -165,8 +173,8 @@ public class Evaluation {
         try {
             for (String method : methods) {
                 String qaPath = inputDir + method + "_QA.jsonl";
-                String detailPath = resultDir + method + "_LLMAssess_detail.jsonl";
-                String resultPath = resultDir + method + "_LLMAssess_result.jsonl";
+                String detailPath = resultDir + method + "_LLMAssess_detail-5.jsonl";
+                String resultPath = resultDir + method + "_LLMAssess_result-5.jsonl";
 
                 log.info("========== 开始 LLM 评估方法: {} ==========", method);
 
@@ -211,7 +219,7 @@ public class Evaluation {
             executor.shutdown();
 
             // 生成 LLM 评分对比表格
-            writeLLMComparisonTable(allLLMScores, resultDir + "All_Methods_LLM_Comparison.txt");
+//            writeLLMComparisonTable(allLLMScores, resultDir + "LLM_Comparison-1.txt");
             log.info("========== 全部 LLM 评估完成，对比表格已生成 ==========");
 
         } catch (Exception e) {
@@ -250,7 +258,7 @@ public class Evaluation {
                 writer.write("  " + method + "_LLMAssess_detail.jsonl  -> 逐条 LLM 评估详情\n");
                 writer.write("  " + method + "_LLMAssess_result.jsonl  -> LLM 评分汇总\n");
             }
-            writer.write("  All_Methods_LLM_Comparison.txt -> 本文件（四种方法 LLM 评分对比）\n");
+            writer.write("  All_Methods_LLM_Comparison-v1.txt -> 本文件（四种方法 LLM 评分对比）\n");
         }
     }
 
@@ -260,9 +268,10 @@ public class Evaluation {
     @Test
     @Order(6)
     public void revaluateFromQA() {
-        String resultDir = "src/main/resources/data/result/evaluation/";
-        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "HKGRAG-v2-1","LeanRAG"};
-
+//        String resultDir = "src/main/resources/data/result/evaluation/";
+//        String[] methods = {"BM25RAG", "NaiveRAG", "HybridRAG", "HKGRAG-v2-1","LeanRAG"};
+        String resultDir = "src/main/resources/data/datasets/UltraDomain/agriculture/";
+        String[] methods = {"NaiveRAG", "GraphRAG", "LightRAG", "HKGRAG-2"};
         Map<String, Map<String, Double>> allScores = new LinkedHashMap<>();
 
         try {
@@ -298,8 +307,8 @@ public class Evaluation {
             }
 
             // 写入新的对比表格
-            EvaluationUtils.writeComparisonTable(allScores, resultDir + "All_Methods_Comparison_v3.txt");
-            log.info("========== 全部重新评估完成，新表格已生成: All_Methods_Comparison_v2.txt ==========");
+            EvaluationUtils.writeComparisonTable(allScores, resultDir + "agriculture_All_Methods_Comparison.txt");
+            log.info("========== 全部重新评估完成，新表格已生成: agriculture_All_Methods_Comparison.txt ==========");
 
         } catch (Exception e) {
             log.error("重新评估失败: {}", e.getMessage(), e);
@@ -312,14 +321,14 @@ public class Evaluation {
     @Test
     @Order(4)
     public void runAllMethods() {
-        String inputPath = "src/main/resources/data/test_set.jsonl";
-        String resultDir = "src/main/resources/data/result/evaluation/";
+        String inputPath = "src/main/resources/data/datasets/Bistu/qa.jsonl";
+        String resultDir = "src/main/resources/data/datasets/Bistu";
 
         Map<String, Function<String, String>> methods = new LinkedHashMap<>();
-        methods.put("BM25RAG", q -> baseLineService.bm25Rag(q).getAnswer());
+//        methods.put("BM25RAG", q -> baseLineService.bm25Rag(q).getAnswer());
         methods.put("NaiveRAG", q -> baseLineService.naiveRAG(q).getAnswer());
-        methods.put("HybridRAG", q -> baseLineService.hybridRAG(q).getAnswer());
-        methods.put("MultiAgent", multiAgent::testMultiAgent);
+//        methods.put("HybridRAG", q -> baseLineService.hybridRAG(q).getAnswer());
+        methods.put("HKGRAG", multiAgent::testMultiAgent);
 
         try {
             List<TestSet> testSetList = TextUtils.readJsonlToList(inputPath, TestSet.class);
@@ -339,8 +348,8 @@ public class Evaluation {
                 for (int i = 0; i < testSetList.size(); i++) {
                     TestSet t = testSetList.get(i);
                     EvalRecord record = new EvalRecord();
-                    record.setFileId(t.getFileId());
-                    record.setType(t.getType());
+//                    record.setFileId(t.getFileId());
+//                    record.setType(t.getType());
                     record.setQuestion(t.getQuestion());
                     record.setPredAnswer(ragMethod.apply(t.getQuestion()));
                     record.setGoldAnswer(t.getAnswer());

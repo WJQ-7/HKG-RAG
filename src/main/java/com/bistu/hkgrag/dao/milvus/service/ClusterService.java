@@ -706,7 +706,7 @@ public class ClusterService {
                     .collectionName(COLLECTION_NAME)
                     .searchRequests(searchRequests)
                     .outFields(List.of("clusterId", "clusterName", "description"))
-                    .ranker(new RRFRanker(4 * topK))
+                    .ranker(new RRFRanker(60))
                     .topK(topK)
                     .build();
             SearchResp searchResp = client.hybridSearch(hybridSearchReq);

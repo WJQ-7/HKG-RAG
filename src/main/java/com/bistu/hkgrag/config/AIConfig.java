@@ -129,8 +129,8 @@ public class AIConfig {
                 .build();
 
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model("deepseek-v4-flash")
-                .temperature(0.7)
+                .model("deepseek-v4-pro")
+                .temperature(0.5)
                 .build();
 
         OpenAiChatModel qwenModel = OpenAiChatModel.builder()
@@ -157,23 +157,25 @@ public class AIConfig {
 
         // RestClient 请求超时4分钟
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofMinutes(4));
+        requestFactory.setReadTimeout(Duration.ofMinutes(10));
 
         OpenAiApi api = OpenAiApi.builder()
-//                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-//                .baseUrl("http://10.146.130.140:8001")
-                .baseUrl("http://127.0.0.1:8001")
+                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
                 .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+//                  .baseUrl("http://10.251.1.122:31006")
+                .baseUrl("http://10.146.130.107:8001")
+//               .baseUrl("http://127.0.0.1:8001")
+//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
                 .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
                 .restClientBuilder(RestClient.builder().requestFactory(requestFactory))
                 .build();
 
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-      //          .model("qwen3-max")
-//              .model("/home/wjq/qwen2.5-14b-instruct")
-                .model("/home/featurize/work/qwen2.5-14b-instruct")
-                .temperature(0.7)
+//                .model("qwen3-max")
+//                .model("/workspace/chen/wjq/model/qwen2.5-14b-instruct")
+              .model("/home/wjq/qwen2.5-14b-instruct")
+//             .model("/home/featurize/work/qwen2.5-14b-instruct")
+                .temperature(0.1)
                 .build();
 
         OpenAiChatModel qwenModel = OpenAiChatModel.builder()
@@ -194,21 +196,20 @@ public class AIConfig {
 
         OpenAiApi embeddingApi = OpenAiApi.builder()
 //                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
+//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
+//                .baseUrl("http://10.146.130.140:8003")
+//                .baseUrl("http://127.0.0.1:8001")
+                .baseUrl("http://10.251.1.122:31002")
                 .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-                .baseUrl("http://10.146.130.140:8003")
-//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
-//                .baseUrl("http://127.0.0.1:8080")
-//                .baseUrl("http://10.251.1.122:31001")
-//                .apiKey("sk-1435466c2c4049ee9c7eb8bac30c873a")
                 .webClientBuilder(WebClient.builder().clientConnector(new JdkClientHttpConnector(httpClient)))
                 .restClientBuilder(RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient)))
                 .build();
 
         OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
-               // .model("text-embedding-v4")
+//                .model("text-embedding-v4")
 //                .model("/home/featurize/work/qwen3-4b-embedding")
-                .model("/home/wjq/qwen3-4b-embedding")
-//                .model("/workspace/chen/wjq/model/qwen3-embedding-4b")
+//                .model("/home/wjq/qwen3-4b-embedding")
+                .model("/workspace/chen/wjq/model/qwen3-embedding-4b")
                 .build();
         OpenAiEmbeddingModel embeddingModel =
                 new OpenAiEmbeddingModel(embeddingApi, MetadataMode.EMBED, options);

@@ -124,22 +124,44 @@ public class TextUtils {
 //    }
 
     /**
-     * 通用读取 jsonl 文件，返回指定类型的 List
+     * 通用读取 jsonl 文件，返回指定类型的 List。
+     * 自动检测格式：如果文件首字符为 '[' 则按 JSON 数组解析，否则按 JSONL 逐行解析。
      * @param filePath 文件路径
      * @param clazz 目标类
      * @return List<T>
      */
     public static <T> List<T> readJsonlToList(String filePath, Class<T> clazz) {
         List<T> list = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                T obj = objectMapper.readValue(line, clazz);
-                list.add(obj);
+        File file = new File(filePath);
+        if (!file.exists()) {
+            log.error("文件不存在: {}", filePath);
+            return list;
+        }
+        try {
+            String rawText = Files.readString(file.toPath(), StandardCharsets.UTF_8).trim();
+            if (rawText.isEmpty()) return list;
+
+            // 自动检测：JSON 数组格式 vs JSONL 格式
+            if (rawText.startsWith("[")) {
+                // JSON 数组格式
+                List<T> items = objectMapper.readValue(rawText,
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, clazz));
+                list.addAll(items);
+            } else {
+                // JSONL 格式（逐行）
+                try (BufferedReader br = new BufferedReader(new StringReader(rawText))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        line = line.trim();
+                        if (line.isEmpty()) continue;
+                        T obj = objectMapper.readValue(line, clazz);
+                        list.add(obj);
+                    }
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
-            log.error("读取jsonl文件失败，path: {}", filePath);
+            log.error("读取文件失败，path: {}", filePath);
         }
         return list;
     }

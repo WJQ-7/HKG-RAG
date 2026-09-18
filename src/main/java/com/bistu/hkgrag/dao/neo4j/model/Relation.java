@@ -15,7 +15,15 @@ public class Relation {
      */
     public String targetId;
     /**
-     * 源实体名+目标实体名
+     * 源实体原始名称
+     */
+    public String sourceName;
+    /**
+     * 目标实体原始名称
+     */
+    public String targetName;
+    /**
+     * 源实体名和目标实体名泛化后的关键词（用于检索匹配）
      */
     public String keywords;
     /**

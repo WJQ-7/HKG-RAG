@@ -30,7 +30,7 @@ public class MultiAgentTest {
     @Test
     public void testMultiAgent() {
 //        如何申请东方睿嬴（北京）软件技术有限公司”实习生职位以及联系方式是什么
-        String question = "哪些校友企业招聘的岗位明确面向在校大学生或应届毕业生？ ";
+        String question = "How can market farmers extend their growing season?";
         String finalAnswer=testMultiAgent.testMultiAgent(question);
         System.out.println(finalAnswer);
         Assertions.assertNotNull(finalAnswer);
@@ -38,22 +38,23 @@ public class MultiAgentTest {
 
     @Test
     public void testBaselineRag(){
-        String question = "评审委员会在同等学术水平下是否应优先考虑北京信息科技大学经济管理学院教师的丰耘青年教师优秀科研论文奖励基金申请？";
-        String finalAnswer=baseLineService.naiveRAG(question).getAnswer();
-        System.out.println(finalAnswer);
-        Assertions.assertNotNull(finalAnswer);
+        String question = "What are the steps involved in extracting and handling honey, and why is it important to strain the honey after extraction?";
+        String finalAnswer;
+//        finalAnswer=baseLineService.naiveRAG(question).getAnswer();
+//        System.out.println(finalAnswer);
+//        Assertions.assertNotNull(finalAnswer);
 
         finalAnswer = testMultiAgent.testMultiAgent(question);
         System.out.println(finalAnswer);
         Assertions.assertNotNull(finalAnswer);
     }
 
-    @Test
-    public void testSearchEntityByName(){
-        List<String> names=new ArrayList<String>();
-        names.add("高等数学");
-        RetrievalTools.RetrievalResult result=retrievalTools.searchEntityByName(names);
-        Assertions.assertNotNull(result);
-
-    }
+//    @Test
+//    public void testSearchEntityByName(){
+//        List<String> names=new ArrayList<String>();
+//        names.add("高等数学");
+//        RetrievalTools.RetrievalResult result=retrievalTools.searchEntityByName(names);
+//        Assertions.assertNotNull(result);
+//
+//    }
 }

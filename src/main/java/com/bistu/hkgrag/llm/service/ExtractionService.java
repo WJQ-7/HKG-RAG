@@ -1,11 +1,11 @@
 package com.bistu.hkgrag.llm.service;
 
+import com.bistu.hkgrag.config.PromptConfig;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.dao.neo4j.model.Entity;
 import com.bistu.hkgrag.dao.neo4j.model.Relation;
 import com.bistu.hkgrag.llm.model.extraction.EntityResult;
 import com.bistu.hkgrag.llm.model.extraction.RelationResult;
-import com.bistu.hkgrag.llm.utils.PromptTemplates;
 import com.bistu.hkgrag.preprocess.utils.TextUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -31,14 +31,17 @@ public class ExtractionService {
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
     private final DedupService dedupService;
+    private final PromptConfig promptConfig;
 
     public ExtractionService(@Autowired ObjectMapper objectMapper,
                              @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient,
-                             @Autowired DedupService dedupService) {
+                             @Autowired DedupService dedupService,
+                             @Autowired PromptConfig promptConfig) {
 
         this.objectMapper = objectMapper;
         this.chatClient = chatClient;
         this.dedupService = dedupService;
+        this.promptConfig = promptConfig;
     }
 
     public void entitiesAndRelationExtractionMultiThread(String inputPath, String outputPath) {
@@ -62,9 +65,7 @@ public class ExtractionService {
 
 
         try {
-//            List<DoFile> fileList = TextUtils.readJsonlToList(inputPath, DoFile.class);
             List<DoFile> fileList = TextUtils.readJsonlToList(inputPath, DoFile.class);
-            //if (fileList.size() >= 500) fileList = fileList.subList(0, 10);
             log.info("共需要处理[{}]个文档分块", fileList.size());
 
             AtomicInteger processedCount = new AtomicInteger(0);
@@ -88,7 +89,11 @@ public class ExtractionService {
                             mainSemaphore.release();
                         }
                     } catch (Exception e) {
-                        log.error("首次处理失败，加入重试队列: {}", file.getFileId(), e);
+                        if (isTimeoutOrNetworkError(e)) {
+                            log.warn("LLM调用超时/网络异常，加入重试队列: chunkId={}", file.getChunkId());
+                        } else {
+                            log.error("首次处理失败，加入重试队列: {}", file.getFileId(), e);
+                        }
                         retryQueue.add(file);
                     }
 
@@ -176,17 +181,33 @@ public class ExtractionService {
                 }
             }
 
-            // =========================
-            // 🔬 Phase 2: 全局消歧去重
-            // =========================
-            log.info("==================================================");
-            log.info("🔬 Phase 2: 开始全局实体消歧去重，原始实体数: {}", allRawEntities.size());
-            List<Entity> dedupEntities = dedupService.deduplicate(allRawEntities);
-            log.info("🔬 消歧后实体数: {}", dedupEntities.size());
+//            // =========================
+//            // Checkpoint: 保存 Phase 1 结果（避免后续阶段 LLM 挂了丢失数据）
+//            // =========================
+//            log.info("[Checkpoint] 保存 Phase 1 结果...");
+//            TextUtils.writeJsonl(outputPath + "/_checkpoint_raw_entities.jsonl", allRawEntities);
+//            TextUtils.writeJsonl(outputPath + "/_checkpoint_doc_entities.jsonl", allDocEntities);
+//            TextUtils.writeJsonl(outputPath + "/_checkpoint_raw_relations.jsonl", allRawRelations);
+//            log.info("[Checkpoint] Phase 1 结果已落盘: 原始实体{} | 文档实体{} | 原始关系{}",
+//                    allRawEntities.size(), allDocEntities.size(), allRawRelations.size());
 
             // =========================
-            // 🔬 Phase 2.5: 对去重后拼接的描述进行 LLM 精炼总结
+            // Phase 2: 全局消歧去重
             // =========================
+            log.info("==================================================");
+            log.info("Phase 2: 开始全局实体消歧去重，原始实体数: {}", allRawEntities.size());
+            List<Entity> dedupEntities = dedupService.deduplicate(allRawEntities);
+            log.info("消歧后实体数: {}", dedupEntities.size());
+
+//            // Checkpoint: 保存 Phase 2 消歧结果（Phase 2.5 又要调 LLM，先落盘）
+//            log.info("[Checkpoint] 保存 Phase 2 消歧结果...");
+//            TextUtils.writeJsonl(outputPath + "/_checkpoint_dedup_entities.jsonl", dedupEntities);
+//            log.info("[Checkpoint] Phase 2 消歧结果已落盘: {} 个实体", dedupEntities.size());
+
+            // =========================
+            // Phase 2.5: 对去重后拼接的描述进行 LLM 精炼总结
+            // =========================
+            log.info("开始始进行实体描述合并");
             dedupEntities = refineEntityDescriptions(dedupEntities);
             log.info("🔬 描述精炼后内容实体数: {}", dedupEntities.size());
 
@@ -194,33 +215,40 @@ public class ExtractionService {
             // 🔬 Phase 2.6: 合并同一文档多个chunk的文档实体（同一fileId只保留一个）
             // =========================
             List<Entity> mergedDocEntities = mergeDocEntities(allDocEntities);
-            log.info("🔬 文档实体合并后数量: {}", mergedDocEntities.size());
+            log.info("文档实体合并后数量: {}", mergedDocEntities.size());
+
+//            // Checkpoint: 保存 Phase 2.5/2.6 精炼+合并结果
+//            log.info("[Checkpoint] 保存 Phase 2.5/2.6 精炼结果...");
+//            List<Entity> allEntitiesForCheckpoint = new ArrayList<>(mergedDocEntities);
+//            allEntitiesForCheckpoint.addAll(dedupEntities);
+//            TextUtils.writeJsonl(outputPath + "/_checkpoint_all_entities.jsonl", allEntitiesForCheckpoint);
+//            log.info("[Checkpoint] 实体精炼+合并结果已落盘: {} 个实体", allEntitiesForCheckpoint.size());
 
             // 构建 entityName → entityId 映射
             Map<String, String> nameToIdMap = dedupService.buildNameToIdMap(dedupEntities);
 
             // =========================
-            // 🔗 Phase 3: 消歧后合并关系 + 建立文档-实体包含关系
+            // Phase 3: 消歧后合并关系 + 建立文档-实体包含关系
             // =========================
             log.info("==================================================");
-            log.info("🔗 Phase 3: 合并关系，原始关系数: {}", allRawRelations.size());
+            log.info("Phase 3: 合并关系，原始关系数: {}", allRawRelations.size());
 
             // 3.1 实体间关系：用消歧后的 entityId 替换 sourceName/targetName（名称不变），合并重复关系
             List<Relation> mergedRelations = mergeRelationsAfterDedup(allRawRelations, nameToIdMap);
-            log.info("🔗 实体间关系合并后: {}", mergedRelations.size());
+            log.info("实体间关系合并后: {}", mergedRelations.size());
 
             // 3.2 文档-实体包含关系
-            List<Relation> docRelations = buildDocEntityRelations(allRawEntities, nameToIdMap);
-            log.info("🔗 文档-实体包含关系: {}", docRelations.size());
+            List<Relation> docRelations = buildDocEntityRelations(allRawEntities, nameToIdMap, mergedDocEntities);
+            log.info("文档-实体包含关系: {}", docRelations.size());
 
             // 合并所有关系
             List<Relation> allRelations = new ArrayList<>();
             allRelations.addAll(mergedRelations);
             allRelations.addAll(docRelations);
-            log.info("🔗 Phase 3 完成，总关系数: {}", allRelations.size());
+            log.info("Phase 3 完成，总关系数: {}", allRelations.size());
 
             // =========================
-            // 📝 写入 JSONL（全部用 Neo4j model）
+            // 写入 JSONL（全部用 Neo4j model）
             // =========================
             List<Entity> allEntities = new ArrayList<>();
             allEntities.addAll(mergedDocEntities);
@@ -229,12 +257,12 @@ public class ExtractionService {
             TextUtils.writeJsonl(outputPath + "/all_entities.jsonl", allEntities);
             TextUtils.writeJsonl(outputPath + "/all_relations.jsonl", allRelations);
 
-            log.info("📝 实体写入完成: {} (文档属性: {}, 内容实体: {})",
+            log.info("实体写入完成: {} (文档属性: {}, 内容实体: {})",
                     allEntities.size(), mergedDocEntities.size(), dedupEntities.size());
-            log.info("📝 关系写入完成: {}", allRelations.size());
+            log.info("关系写入完成: {}", allRelations.size());
 
             // =========================
-            // 📊 最终统计
+            // 最终统计
             // =========================
             log.info("\n");
             log.info("========================================================");
@@ -254,6 +282,23 @@ public class ExtractionService {
         }
     }
 
+    /**
+     * 判断异常是否为 LLM 调用超时或网络异常（这些是预期内的可恢复错误，无需 ERROR 日志）
+     */
+    private boolean isTimeoutOrNetworkError(Throwable e) {
+        Throwable cause = e;
+        while (cause != null) {
+            String className = cause.getClass().getName();
+            if (className.contains("Timeout") || className.contains("Cancelled")
+                    || cause instanceof java.util.concurrent.TimeoutException
+                    || cause instanceof java.net.http.HttpTimeoutException
+                    || cause instanceof org.springframework.web.client.ResourceAccessException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
 
     /**
      * 单个 chunk 的抽取逻辑（Phase 1）：
@@ -274,7 +319,7 @@ public class ExtractionService {
         log.info("正在处理文件chunkId:[{}]", file.getChunkId());
 
         // ========== 1️⃣ 抽取文档节点 ==========
-        String file_Node_prompt = String.format(PromptTemplates.File_Node_Extraction, file.getFileName(), file.getContent());
+        String file_Node_prompt = String.format(promptConfig.fileNodeExtraction(), file.getFileName(), file.getContent());
         BeanOutputConverter<EntityResult> fileEntityConverter = new BeanOutputConverter<>(EntityResult.class);
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .temperature(0.1)
@@ -306,7 +351,7 @@ public class ExtractionService {
         }
 
         // ========== 2️⃣ 抽取内容实体 ==========
-        String content_Extraction_prompt = String.format(PromptTemplates.Content_Entity_Extraction, file.getContent());
+        String content_Extraction_prompt = String.format(promptConfig.contentEntityExtraction(), file.getContent());
         BeanOutputConverter<EntityResult> contentEntityConverter = new BeanOutputConverter<>(EntityResult.class);
         OpenAiChatOptions contentOptions = OpenAiChatOptions.builder()
                 .temperature(0.3)
@@ -373,7 +418,7 @@ public class ExtractionService {
 
         // ========== 3️⃣ 抽取同 chunk 内内容实体间关系 ==========
         String entityTriplesJson = objectMapper.writeValueAsString(entityIndexList);
-        String entities_Relation_prompt = String.format(PromptTemplates.Entities_Relation_Extraction, file.getContent(), entityTriplesJson);
+        String entities_Relation_prompt = String.format(promptConfig.entitiesRelationExtraction(), file.getContent(), entityTriplesJson);
         BeanOutputConverter<RelationResult> relationConverter = new BeanOutputConverter<>(RelationResult.class);
         OpenAiChatOptions relationOptions = OpenAiChatOptions.builder()
                 .temperature(0.1)
@@ -400,7 +445,14 @@ public class ExtractionService {
             Relation neoRel = new Relation();
             neoRel.setSourceId(srcName);
             neoRel.setTargetId(tgtName);
-            neoRel.setKeywords(srcName + "+" + tgtName);
+            neoRel.setSourceName(srcName);
+            neoRel.setTargetName(tgtName);
+            // 使用 LLM 返回的泛化 keywords，如果 LLM 未返回则 fallback 为原始名称拼接
+            String keywords = rel.keywords();
+            if (keywords == null || keywords.isBlank()) {
+                keywords = srcName + "+" + tgtName;
+            }
+            neoRel.setKeywords(keywords.trim());
             neoRel.setRelationDescription(rel.description());
             allRawRelations.add(neoRel);
         }
@@ -432,6 +484,8 @@ public class ExtractionService {
                 Relation merged = new Relation();
                 merged.setSourceId(sourceId);
                 merged.setTargetId(targetId);
+                merged.setSourceName(rel.getSourceName());
+                merged.setTargetName(rel.getTargetName());
                 merged.setKeywords(rel.getKeywords());
                 merged.setRelationDescription(rel.getRelationDescription());
                 mergedMap.put(key, merged);
@@ -445,10 +499,19 @@ public class ExtractionService {
     /**
      * 建立文档-内容实体的"包含"关系。
      * 消歧后执行，按 fileId 分组获取每个 chunk 的实体。
+     *
+     * @param allRawEntities    原始内容实体列表
+     * @param nameToIdMap       实体名称 → 实体ID 映射
+     * @param mergedDocEntities 合并后的文档实体列表（用于获取文档名称）
      */
     private List<Relation> buildDocEntityRelations(
             List<Entity> allRawEntities,
-            Map<String, String> nameToIdMap) {
+            Map<String, String> nameToIdMap,
+            List<Entity> mergedDocEntities) {
+
+        // 构建 fileId → 文档实体名称 映射
+        Map<String, String> docNameMap = mergedDocEntities.stream()
+                .collect(Collectors.toMap(Entity::getEntityId, Entity::getEntityName, (a, b) -> a));
 
         // 按 fileId 分组，得到每个 chunk 对应的原始实体列表
         Map<String, List<Entity>> entitiesByFileId = allRawEntities.stream()
@@ -461,6 +524,8 @@ public class ExtractionService {
             String fileId = entry.getKey();
             List<Entity> chunkEntities = entry.getValue();
 
+            String docName = docNameMap.getOrDefault(fileId, fileId);
+
             for (Entity entity : chunkEntities) {
                 String entityName = entity.getEntityName();
                 String entityId = nameToIdMap.get(entityName);
@@ -471,6 +536,8 @@ public class ExtractionService {
                     Relation docRel = new Relation();
                     docRel.setSourceId(fileId);
                     docRel.setTargetId(entityId);
+                    docRel.setSourceName(docName);
+                    docRel.setTargetName(entityName);
                     docRel.setKeywords("doc+" + entityName);
                     docRel.setRelationDescription("包含");
                     docRelMap.put(key, docRel);
@@ -503,12 +570,12 @@ public class ExtractionService {
                 semaphore.acquire();
                 try {
                     String summaryPrompt = String.format(
-                            PromptTemplates.Description_Summary, desc);
+                            promptConfig.descriptionSummary(), desc);
                     String summarized = chatClient.prompt().user(summaryPrompt).call().content();
                     if (summarized != null && !summarized.isBlank()) {
                         entity.setEntityDescription(summarized.trim());
                         refinedCount++;
-                        log.debug("实体描述精炼: [{}] -> {}", entity.getEntityName(), summarized.trim());
+//                        log.info("实体描述精炼: [{}] -> {}", entity.getEntityName(), summarized.trim());
                     }
                 } finally {
                     semaphore.release();
@@ -568,7 +635,7 @@ public class ExtractionService {
                     semaphore.acquire();
                     try {
                         String summaryPrompt = String.format(
-                                PromptTemplates.Description_Summary, combinedDesc);
+                                promptConfig.descriptionSummary(), combinedDesc);
                         String summarized = chatClient.prompt().user(summaryPrompt).call().content();
                         if (summarized != null && !summarized.isBlank()) {
                             base.setEntityDescription(summarized.trim());
@@ -607,7 +674,7 @@ public class ExtractionService {
             existingJson = existingNames.toString();
         }
 
-        String gleaningPrompt = String.format(PromptTemplates.Entity_Gleaning, content, existingJson);
+        String gleaningPrompt = String.format(promptConfig.entityGleaning(), content, existingJson);
         BeanOutputConverter<EntityResult> converter = new BeanOutputConverter<>(EntityResult.class);
         OpenAiChatOptions gleanOptions = OpenAiChatOptions.builder()
                 .temperature(0.1)
@@ -702,7 +769,7 @@ public class ExtractionService {
                                 semaphore.acquire();
                                 try {
                                     String promptStr = String.format(
-                                            PromptTemplates.File_Topic_Extraction,
+                                            promptConfig.fileTopicExtraction(),
                                             chunk.getFileName(),
                                             chunk.getContent()
                                     );
@@ -767,7 +834,7 @@ public class ExtractionService {
                                 semaphore.acquire();
                                 try {
                                     String summaryPrompt = String.format(
-                                            PromptTemplates.File_Topic_Summary_Extraction,
+                                            promptConfig.fileTopicSummaryExtraction(),
                                             chunks.get(0).getFileName(),
                                             String.join("\n", chunkTopics)
                                     );

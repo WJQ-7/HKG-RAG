@@ -38,9 +38,11 @@ public class RetrievalTools {
 
     /**
      * 返回给 LLM 的内容最大字符数。
+     * 中文约 2 字/token，8000 字 ≈ 4000 tokens。
+     * 工具调用循环中每次调用都会累积到上下文，设此上限确保即使多轮调用也不会撑爆 32768 token 限制。
      * 超过此长度会截断，完整内容仅保存在 EvidenceStore 中。
      */
-    private static final int MAX_CONTENT_TO_LLM = 4000;
+    private static final int MAX_CONTENT_TO_LLM = 8000;
 
     public RetrievalTools(@Autowired Neo4jService neo4jService,
                           @Autowired ClusterService clusterService,
@@ -89,24 +91,24 @@ public class RetrievalTools {
     @Tool(description = """
             【适用问题类型：SPECIFIC_DETAIL（具体细节问题）】
             当用户询问明确的事实、属性、联系方式、时间等具体信息时调用。
-            
+
             工具功能：
             根据实体名称，通过向量匹配在知识图谱中定位实体节点，返回其属性信息。
-            
+
             知识图谱中的实体主要包括：
             - 人名（教师、学生、校友等）
             - 地名（校区、楼宇、地点等）
             - 机构名（学院、部门、办公室、实验室等）
-            
+
             可获取的信息包括但不限于：
             - 人物属性（性别、国籍、身份、职务等）
             - 机构属性（职责、联系方式、办公地点等）
             - 地点属性（所属校区、位置说明等）
-            
+
             调用时机（SPECIFIC_DETAIL类型问题）：
             - 仅当关键词包含明确的实体名称（具体人名、机构名、地名）时，作为 searchFileByQuery 的补充调用
             - 一般情况下 SPECIFIC_DETAIL 问题优先使用 searchFileByQuery 直接检索文档
-            
+
             参数说明：
             names：填写问题分析智能体提取出的关键词（实体名称列表）。
             """)
@@ -235,20 +237,23 @@ public class RetrievalTools {
     // ==================== 2. 全局抽象问题（GLOBAL_ABSTRACT）检索工具 ====================
 
     @Tool(description = """
-            【适用问题类型：GLOBAL_ABSTRACT（全局抽象问题）】
-            当用户问题涉及涉及某一类相似事件、业务场景或主题相关文档时调用此工具。
-            该工具会根据主题语义匹配知识图谱中的聚类节点，适合检索“同类文档集合”。
-            
+            【适用问题类型：仅限 GLOBAL_ABSTRACT（全局抽象问题）】
+            【严禁用于 SPECIFIC_DETAIL 和 MULTI_HOP 问题】
+            当用户问题涉及某一类相似事件、业务场景或主题相关文档时调用此工具。
+            该工具会根据主题语义匹配知识图谱中的聚类节点，适合检索"同类文档集合"。
+
             尤其适合：多个文档虽然名称不同，但内容属于同一业务场景或同一事件类型的情况。
-            
-            调用时机（GLOBAL_ABSTRACT类型问题）：
+
+            调用时机（仅限 GLOBAL_ABSTRACT 类型问题）：
             - 近几年招生公告汇总
             - 项目风险相关材料归纳
             - 某个学术会议近几年的相关通知
             - 奖学金制度文件（不同学院、不同年份）
             - 学校近年发展情况总结
             - 各学院教学质量评估
-            
+
+            警告：对 SPECIFIC_DETAIL 问题使用此工具会匹配到大量无关聚类节点，引入噪声，严重降低答案质量。
+
             """)
     public RetrievalResult searchFileByTopic(@ToolParam(description = "问题分析智能体结果中的 topics（相关主题）") List<String> relatedTopics,
                                              @ToolParam(description = """
@@ -350,28 +355,28 @@ public class RetrievalTools {
     @Tool(description = """
             【适用问题类型：MULTI_HOP（多跳推理问题）】
             根据实体名称在知识图谱中定位实体节点，返回实体属性及其关联的三元组关系。
-            
+
             工具功能：
             1. 将实体名称通过向量匹配定位到知识图谱中的实体节点
             2. 返回匹配到的实体节点属性摘要
             3. 返回该实体在知识图谱中最多10条关联三元组，格式为：(实体名) -[关系类型]-> (邻居名)
-            
+
             三元组格式说明：
             每条三元组描述实体与邻居之间的关系，例如：
             (张三) -[属于]-> (计算机学院)
             (计算机学院) -[参与项目]-> (涉密项目A)
-            
+
             多跳推理策略：
             - 阅读返回的三元组列表，理解实体有哪些关联关系
             - 根据问题语义，找到最相关的三元组，提取其中的邻居实体名
             - 用邻居实体名再次调用本工具，获取邻居的三元组，继续推理
             - 可重复此步骤，逐步扩展直到获取足够信息回答多跳问题
-            
+
             调用时机：
             - 多跳推理问题定位起始实体
             - 需要查看实体有哪些关系关联
             - 拿到邻居实体名后，继续用邻居名扩展查询
-            
+
             参数说明：
             names：填写问题分析智能体提取的关键词（实体名称列表）
             """)

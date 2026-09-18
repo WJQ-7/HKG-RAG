@@ -10,6 +10,7 @@ import com.bistu.hkgrag.dao.milvus.service.FileService;
 import com.bistu.hkgrag.dao.neo4j.model.Entity;
 import com.bistu.hkgrag.dao.neo4j.model.Relation;
 import com.bistu.hkgrag.dao.neo4j.service.Neo4jService;
+import com.bistu.hkgrag.llm.agent.TestAgent;
 import com.bistu.hkgrag.llm.service.ExtractionService;
 import com.bistu.hkgrag.llm.service.GenClusterService;
 import com.bistu.hkgrag.llm.agent.MultiAgent;
@@ -84,6 +85,7 @@ public class UltraDomainPipeline {
     // 评估用到的 Service
     private final MultiAgent multiAgent;
     private final BaseLineService baseLineService;
+    private final TestAgent testAgent;
 
     // 分块配置（用于创建 UltraDomainDataset 实例）
     @Value("${HKG-RAG.chunk.max-size}")
@@ -93,7 +95,7 @@ public class UltraDomainPipeline {
     private int overlapChunkSize;
 
     private static final String BASE_DIR = "src/main/resources/data/datasets/UltraDomain/";
-    private static final String RESULT_DIR = "src/main/resources/data/result/UltraDomain/";
+    private static final String RESULT_DIR = "src/main/resources/data/datasets/UltraDomain/";
 
     public UltraDomainPipeline(@Autowired ExtractionService extractionService,
                                @Autowired GenClusterService genClusterService,
@@ -103,7 +105,8 @@ public class UltraDomainPipeline {
                                @Autowired Neo4jService neo4jService,
                                @Autowired @Qualifier("qwenEmbeddingModel") EmbeddingModel embeddingModel,
                                @Autowired MultiAgent multiAgent,
-                               @Autowired BaseLineService baseLineService) {
+                               @Autowired BaseLineService baseLineService,
+                               @Autowired TestAgent testAgent) {
         this.extractionService = extractionService;
         this.genClusterService = genClusterService;
         this.entityService = entityService;
@@ -113,6 +116,7 @@ public class UltraDomainPipeline {
         this.embeddingModel = embeddingModel;
         this.multiAgent = multiAgent;
         this.baseLineService = baseLineService;
+        this.testAgent = testAgent;
     }
 
     // ==================== 阶段1: 数据抽取（分块 + Topic + 实体关系 + 聚类） ====================
@@ -153,19 +157,19 @@ public class UltraDomainPipeline {
         log.info("║  UltraDomain [{}] 阶段1: 数据抽取                           ║", domain);
         log.info("╚══════════════════════════════════════════════════════════════╝");
 
-//        // Step1: 分块（UltraDomainDataset 是测试类，手动创建）
-//        log.info("===== [{}] Step1: 分块 =====", domain);
-//        UltraDomainDataset ultraDomainDataset = new UltraDomainDataset();
-//        ultraDomainDataset.setMaxChunkSize(maxChunkSize);
-//        ultraDomainDataset.setOverlapChunkSize(overlapChunkSize);
-//        ultraDomainDataset.extractDomain(domain);
-//
+        // Step1: 分块
+        log.info("===== [{}] Step1: 分块 =====", domain);
+        UltraDomainDataset ultraDomainDataset = new UltraDomainDataset();
+        ultraDomainDataset.setMaxChunkSize(maxChunkSize);
+        ultraDomainDataset.setOverlapChunkSize(overlapChunkSize);
+        ultraDomainDataset.extractDomain(domain);
+
         String chunkPath = domainDir + "chunk.jsonl";
         String chunkTopicPath = domainDir + "chunk_topic.jsonl";
-//
-//        // Step2: Topic提取
-//        log.info("===== [{}] Step2: Topic提取 =====", domain);
-//        extractionService.fileTopicExtraction(chunkPath, chunkTopicPath);
+
+        // Step2: Topic提取
+        log.info("===== [{}] Step2: Topic提取 =====", domain);
+        extractionService.fileTopicExtraction(chunkPath, chunkTopicPath);
 
         // Step3: 实体关系抽取
         log.info("===== [{}] Step3: 实体关系抽取 =====", domain);
@@ -277,7 +281,7 @@ public class UltraDomainPipeline {
 
     /**
      * 阶段3: 评估
-     * 包含: Step7 NaiveRAG + MultiAgent 评估
+     * 包含: Step7 NaiveRAG + HKG-RAG 评估
      * 依赖: 阶段2的数据库已建好
      */
     public void stage3_Evaluation(String domain) throws Exception {
@@ -286,7 +290,7 @@ public class UltraDomainPipeline {
         String qaInputPath = domainDir + "qa.jsonl";
 
         log.info("╔══════════════════════════════════════════════════════════════╗");
-        log.info("║  UltraDomain [{}] 阶段3: 评估 (NaiveRAG + MultiAgent)       ║", domain);
+        log.info("║  UltraDomain [{}] 阶段3: 评估 (NaiveRAG + HKG-RAG)       ║", domain);
         log.info("╚══════════════════════════════════════════════════════════════╝");
 
         // 确保结果目录存在
@@ -294,7 +298,8 @@ public class UltraDomainPipeline {
 
         Map<String, Function<String, String>> methods = new LinkedHashMap<>();
         methods.put("NaiveRAG", q -> baseLineService.naiveRAG(q).getAnswer());
-        methods.put("MultiAgent", multiAgent::testMultiAgent);
+        methods.put("HKGRAG", multiAgent::testMultiAgent);
+        methods.put("HKGRAG-without-MultiAgent", testAgent::test_Agent);
 
         Map<String, Map<String, Double>> allScores = new LinkedHashMap<>();
 
@@ -363,7 +368,7 @@ public class UltraDomainPipeline {
         // 写对比表格
         if (!allScores.isEmpty()) {
             StringBuilder sb = new StringBuilder();
-            sb.append("==================== [").append(domain).append("] NaiveRAG vs MultiAgent 对比 ====================\n\n");
+            sb.append("==================== [").append(domain).append("] NaiveRAG vs HKG-RAG 对比 ====================\n\n");
             sb.append(String.format("%-15s %10s %10s %10s %10s\n", "Method", "EM", "F1", "RougeL", "Recall"));
             sb.append("----------------------------------------------------------------------\n");
             for (Map.Entry<String, Map<String, Double>> e : allScores.entrySet()) {
@@ -371,7 +376,7 @@ public class UltraDomainPipeline {
                 sb.append(String.format("%-15s %10.4f %10.4f %10.4f %10.4f\n",
                         e.getKey(), s.get("EM"), s.get("F1"), s.get("RougeL"), s.get("Recall")));
             }
-            java.nio.file.Files.writeString(Path.of(resultDomainDir + domain + "_Comparison.txt"), sb.toString());
+//            java.nio.file.Files.writeString(Path.of(resultDomainDir + domain + "_Comparison-v1.txt"), sb.toString());
         }
 
         log.info("╔══════════════════════════════════════════════════════════════╗");
@@ -426,7 +431,7 @@ public class UltraDomainPipeline {
      */
     private void insertContentEntitiesToMilvus(String entitiesPath) {
         int batchSize = 200;
-        int embedBatchSize = 10;
+        int embedBatchSize = 20;
 
         entityService.createEntityCollection();
 
@@ -445,10 +450,10 @@ public class UltraDomainPipeline {
 
                 DoEntity doEntity = new DoEntity();
                 doEntity.setEntityId(neoEntity.getEntityId());
-                doEntity.setEntityName(neoEntity.getEntityName());
+                doEntity.setEntityName(safeSubstring(neoEntity.getEntityName(), 1000));
                 doEntity.setEntityType(neoEntity.getEntityType());
-                doEntity.setEntityDescription(neoEntity.getEntityDescription());
-                doEntity.setEntityInfo(neoEntity.getEntityInfo());
+                doEntity.setEntityDescription(safeSubstring(neoEntity.getEntityDescription(), 8100));
+                doEntity.setEntityInfo(safeSubstring(neoEntity.getEntityInfo(), 4000));
                 batchList.add(doEntity);
 
                 if (batchList.size() >= batchSize) {
@@ -491,9 +496,9 @@ public class UltraDomainPipeline {
                 DoFile doFile = new DoFile();
                 doFile.setFileId(json.get("fileId").getAsString());
                 doFile.setChunkId(chunkId);
-                doFile.setFileName(json.get("fileName").getAsString());
-                doFile.setTopic(json.has("topic") ? json.get("topic").getAsString() : "");
-                doFile.setContent(json.get("content").getAsString());
+                doFile.setFileName(safeSubstring(json.get("fileName").getAsString(), 512));
+                doFile.setTopic(safeSubstring(json.has("topic") ? json.get("topic").getAsString() : "", 256));
+                doFile.setContent(safeSubstring(json.get("content").getAsString(), 28000));
                 batchList.add(doFile);
 
                 if (batchList.size() >= batchSize) {
@@ -539,9 +544,9 @@ public class UltraDomainPipeline {
 
                 DoCluster doCluster = new DoCluster();
                 doCluster.setClusterId(neoEntity.getEntityId());
-                doCluster.setClusterName(neoEntity.getEntityName());
-                doCluster.setDescription(neoEntity.getEntityDescription() != null
-                        ? neoEntity.getEntityDescription() : "");
+                doCluster.setClusterName(safeSubstring(neoEntity.getEntityName(), 512));
+                doCluster.setDescription(safeSubstring(neoEntity.getEntityDescription() != null
+                        ? neoEntity.getEntityDescription() : "", 1024));
                 batchList.add(doCluster);
 
                 if (batchList.size() >= batchSize) {
@@ -621,11 +626,28 @@ public class UltraDomainPipeline {
         return success ? size : 0;
     }
 
+    // qwen embedding 模型上下文限制 40960 token，中文约 1.3 chars/token，50000 字符留够余量
+    private static final int EMBED_MAX_CHARS = 50000;
+
+    /** 按 Milvus schema maxLength 截断字段，在嵌入前防止插入报错 */
+    private String safeSubstring(String value, int maxLen) {
+        if (value == null) return "";
+        return value.length() > maxLen ? value.substring(0, maxLen) : value;
+    }
+
+    private String truncateForEmbed(String text) {
+        if (text == null) return "";
+        return text.length() > EMBED_MAX_CHARS ? text.substring(0, EMBED_MAX_CHARS) : text;
+    }
+
     private List<float[]> batchEmbed(List<String> texts, int embedBatchSize) {
         List<float[]> allVectors = new ArrayList<>(texts.size());
         for (int i = 0; i < texts.size(); i += embedBatchSize) {
             int end = Math.min(i + embedBatchSize, texts.size());
-            allVectors.addAll(embeddingModel.embed(texts.subList(i, end)));
+            List<String> batch = texts.subList(i, end).stream()
+                    .map(this::truncateForEmbed)
+                    .collect(Collectors.toList());
+            allVectors.addAll(embeddingModel.embed(batch));
         }
         return allVectors;
     }

@@ -1,8 +1,20 @@
 package com.bistu.hkgrag.llm.agent;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 
 public class Utils {
+    private static final Logger log = LoggerFactory.getLogger(Utils.class);
+
+    /**
+     * 评估依据的最大字符数。
+     * EvidenceStore 中保存的是未被截断的完整检索内容（可能数万字符），
+     * 直接拼入评估 prompt 会撑爆 32768 token 上下文，故按此阈值截断。
+     */
+    private static final int MAX_EVIDENCE_CHARS = 6000;
+
     public static String buildHistory(List<MultiAgent.Generation> generations) {
         if (generations == null || generations.isEmpty()) {
             return "暂无历史执行记录";
@@ -107,6 +119,14 @@ public class Utils {
 
         String evidenceContent =
                 evidenceStore.get(trace.evidenceId());
+
+        // 截断完整证据，防止评估 prompt 超限（完整内容对 PASS/FAIL 判断非必需）
+        if (evidenceContent != null && evidenceContent.length() > MAX_EVIDENCE_CHARS) {
+            log.warn("评估依据过长: {}chars，截断至前{}chars防止超限",
+                    evidenceContent.length(), MAX_EVIDENCE_CHARS);
+            evidenceContent = evidenceContent.substring(0, MAX_EVIDENCE_CHARS)
+                    + "\n\n...[评估依据过长已截断，剩余部分省略]";
+        }
 
         sb.append("回答依据：\n")
                 .append(

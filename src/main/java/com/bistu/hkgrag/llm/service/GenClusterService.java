@@ -1,9 +1,9 @@
 package com.bistu.hkgrag.llm.service;
 
+import com.bistu.hkgrag.config.PromptConfig;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.dao.neo4j.model.Entity;
 import com.bistu.hkgrag.dao.neo4j.model.Relation;
-import com.bistu.hkgrag.llm.utils.PromptTemplates;
 import com.bistu.hkgrag.preprocess.utils.TextUtils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -28,13 +28,16 @@ public class GenClusterService {
     private static Logger log = LoggerFactory.getLogger(GenClusterService.class);
     private EmbeddingModel embeddingModel;
     private ChatClient chatClient;
+    private PromptConfig promptConfig;
     //余弦距离阈值
     private static final double THRESHOLD = 0.25;
 
     public GenClusterService(@Autowired @Qualifier("qwenEmbeddingModel") EmbeddingModel embeddingModel,
-                             @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient) {
+                             @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient,
+                             @Autowired PromptConfig promptConfig) {
         this.embeddingModel = embeddingModel;
         this.chatClient = chatClient;
+        this.promptConfig = promptConfig;
     }
 
     @Schema(description = "话题抽取结果")
@@ -187,6 +190,7 @@ public class GenClusterService {
                     // 先构建 clusterId、fileIdList 和 prompt（与重试无关的数据）
                     String clusterId = UUID.randomUUID().toString();
                     Set<String> fileIdSet = new LinkedHashSet<>(); // 去重，同一文档的多个chunk只保留一个关系
+                    Map<String, String> fileIdToName = new LinkedHashMap<>(); // fileId → fileName
 
                     final int MAX_PROMPT_DOC_CHARS = 25000;
                     final int MAX_SAMPLE_DOCS = 30;
@@ -199,6 +203,7 @@ public class GenClusterService {
                         String topic = topics.get(pointIndex).get("topic");
                         String content = topics.get(pointIndex).get("content");
                         fileIdSet.add(fileId);
+                        fileIdToName.putIfAbsent(fileId, fileName);
                         docInfos.add(String.format("主题：%s 文档名：%s 文档内容：%s",
                                 topic, fileName, content));
                     }
@@ -224,7 +229,7 @@ public class GenClusterService {
                         }
                     }
 
-                    String prompt = String.format(PromptTemplates.Topic_Description_Extraction, contentBuilder);
+                    String prompt = String.format(promptConfig.topicDescriptionExtraction(), contentBuilder);
 
                     // 重试只在 LLM 调用上，entity/relation 创建只做一次
                     TopicResult topicResult = null;
@@ -268,6 +273,8 @@ public class GenClusterService {
                         Relation rel = new Relation();
                         rel.setSourceId(clusterId);
                         rel.setTargetId(fileId);
+                        rel.setSourceName(topicResult.clusterName());
+                        rel.setTargetName(fileIdToName.getOrDefault(fileId, fileId));
                         rel.setKeywords("cluster+" + topicResult.clusterName());
                         rel.setRelationDescription("包含");
                         clusterRelationsQueue.add(rel);
@@ -280,8 +287,8 @@ public class GenClusterService {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
             // 写入输出文件
-            TextUtils.writeJsonlAppend(outputPath + "/all_entities_test1.jsonl", new ArrayList<>(clusterEntitiesQueue));
-            TextUtils.writeJsonlAppend(outputPath + "/all_relations_test1.jsonl", new ArrayList<>(clusterRelationsQueue));
+            TextUtils.writeJsonlAppend(outputPath + "/all_entities_test2.jsonl", new ArrayList<>(clusterEntitiesQueue));
+            TextUtils.writeJsonlAppend(outputPath + "/all_relations_test2.jsonl", new ArrayList<>(clusterRelationsQueue));
 
             executor.shutdown();
             log.info("主题聚类 V2 成功（使用新 Entity/Relation 模型），生成聚类节点: {}, 聚类关系: {}",

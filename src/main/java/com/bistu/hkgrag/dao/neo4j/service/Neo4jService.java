@@ -459,7 +459,7 @@ public class Neo4jService {
                 log.warn("实体节点插入/更新失败: entityId={}", entity.getEntityId());
                 return false;
             }
-            log.info("实体节点插入/更新成功: entityId={}, entityName={}", entity.getEntityId(), entity.getEntityName());
+//            log.info("实体节点插入/更新成功: entityId={}, entityName={}", entity.getEntityId(), entity.getEntityName());
             return true;
         } catch (Exception e) {
             log.error("实体节点插入Neo4j异常: entityId={}", entity.getEntityId(), e);

@@ -1,5 +1,6 @@
 package com.bistu.hkgrag.llm.service;
 
+import com.bistu.hkgrag.config.PromptConfig;
 import com.bistu.hkgrag.dao.milvus.model.DoCluster;
 import com.bistu.hkgrag.dao.milvus.model.DoFile;
 import com.bistu.hkgrag.dao.milvus.service.FileService;
@@ -7,7 +8,6 @@ import com.bistu.hkgrag.dao.neo4j.service.Neo4jService;
 import com.bistu.hkgrag.llm.model.agent.TestSet;
 import com.bistu.hkgrag.llm.model.agent.TestSetListResult;
 import com.bistu.hkgrag.llm.model.agent.TestSetResult;
-import com.bistu.hkgrag.llm.utils.PromptTemplates;
 import com.bistu.hkgrag.preprocess.utils.TextUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -29,8 +29,6 @@ import static com.bistu.hkgrag.preprocess.utils.TextUtils.readJson;
 public class GenTestSetService {
     private Logger log = LoggerFactory.getLogger(GenTestSetService.class);
     private final ObjectMapper objectMapper;
-    // 最终输出 100 题：30单跳 + 30同文档两跳 + 40跨文档
-    private static final int TOTAL_QUESTIONS = 100;
     //单跳问题数量
     private static final int SINGLE_HOP = 30;
     //同文档多跳问题数量
@@ -45,16 +43,19 @@ public class GenTestSetService {
     private final ChatClient chatClient;
     private final Neo4jService neo4jService;
     private final FileService fileService;
+    private final PromptConfig promptConfig;
 
     public GenTestSetService(ObjectMapper objectMapper,
                              @Autowired @Qualifier("qwen7bInsChatClient") ChatClient chatClient,
                              @Autowired Neo4jService neo4jService,
                              @Autowired GenClusterService clusterService,
-                             @Autowired FileService fileService) {
+                             @Autowired FileService fileService,
+                             @Autowired PromptConfig promptConfig) {
         this.objectMapper = objectMapper;
         this.chatClient = chatClient;
         this.neo4jService = neo4jService;
         this.fileService = fileService;
+        this.promptConfig = promptConfig;
     }
 
     public void GenTestSet(String inputPath, String outputPath) {
@@ -84,7 +85,7 @@ public class GenTestSetService {
                 List<DoFile> group = fileGroupMap.get(fileId);
                 //将文档拼接成字符串
                 String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
-                String single_Hop_prompt = String.format(PromptTemplates.Generation_SingleHop, group.get(0).getFileName(),fullContent);
+                String single_Hop_prompt = String.format(promptConfig.generationSingleHop(), group.get(0).getFileName(),fullContent);
 
                 TestSetListResult singleHopList = chatClient.prompt()
                         .user(single_Hop_prompt)
@@ -118,7 +119,7 @@ public class GenTestSetService {
                 List<DoFile> group = fileGroupMap.get(fileId);
                 String fullContent = group.stream().map(DoFile::getContent).collect(Collectors.joining(""));
                 // 多跳提示词
-                String multi_Hop_Prompt = String.format(PromptTemplates.Generation_SimpleDoc_MultiHop, group.get(0).getFileName(),fullContent);
+                String multi_Hop_Prompt = String.format(promptConfig.generationSimpleDocMultiHop(), group.get(0).getFileName(),fullContent);
                 // 调用大模型生成多跳问答对
                 TestSetListResult multiHopList = chatClient.prompt()
                         .user(multi_Hop_Prompt)
@@ -203,7 +204,7 @@ public class GenTestSetService {
                             .append(fileList.get(j).getContent())
                             .append("\n\n");
                 }
-                String Cross_Dos_Prompt = String.format(PromptTemplates.Generation_CROSS_DOS, promptSb.toString());
+                String Cross_Dos_Prompt = String.format(promptConfig.generationCrossDoc(), promptSb.toString());
 
                 //调用大模型生成多跳问答对
                 TestSetListResult crossDosList = chatClient.prompt()
@@ -272,7 +273,7 @@ public class GenTestSetService {
                 }
 
                 // 调用主题级生成模板
-                String topicPrompt = String.format(PromptTemplates.Generation_SUMMARY_LEVEL, promptSb.toString());
+                String topicPrompt = String.format(promptConfig.generationSummaryLevel(), promptSb.toString());
                 BeanOutputConverter<GeneratedQuestions> testSetConverterGenerated = new BeanOutputConverter<>(GeneratedQuestions.class);
                 options = OpenAiChatOptions.builder()
                         .temperature(0.1)

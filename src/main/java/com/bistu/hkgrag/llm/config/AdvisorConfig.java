@@ -23,7 +23,6 @@ public class AdvisorConfig {
 
         return ToolCallAdvisor.builder()
                 .toolCallingManager(toolCallingManager)
-
                 .build();
     }
 

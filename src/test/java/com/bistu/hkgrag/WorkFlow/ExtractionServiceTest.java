@@ -24,28 +24,29 @@ public class ExtractionServiceTest {
         this.clusterService = clusterService;
     }
 
-    /**
-     * 生成文档实体的主题
-     */
-    @Test
-    @Order(1)
-    public void testFileTopicExtraction() {
-        String inputPath="src/main/resources/data/chunk.json";
-        String outputPath="src/main/resources/data/chunk_topic_test.jsonl";
-        extractionService.fileTopicExtraction(inputPath,outputPath);
 
-    }
 
     /**
      * 抽取实体、属性及关系
      */
     @Test
-    @Order(2)
+    @Order(1)
     public void testExtractionService() {
-        String inputPath="src/main/resources/data/chunk.json";
-        String outputPath="src/main/resources/data";
+        String inputPath="src/main/resources/data/datasets/Bistu/chunk.json";
+        String outputPath="src/main/resources/data/datasets/Bistu";
         extractionService.entitiesAndRelationExtractionMultiThread(inputPath, outputPath);
-        //extractionService.entitiesAndRelationExtraction(inputPath, outputPath);
+    }
+
+    /**
+     * 生成文档实体的主题
+     */
+    @Test
+    @Order(2)
+    public void testFileTopicExtraction() {
+        String inputPath="src/main/resources/data/datasets/Bistu/chunk.json";
+        String outputPath="src/main/resources/data/datasets/Bistu/chunk_topic.jsonl";
+        extractionService.fileTopicExtraction(inputPath,outputPath);
+
     }
 
     /**
@@ -54,8 +55,8 @@ public class ExtractionServiceTest {
     @Test
     @Order(3)
     public void test_topicCluster(){
-        String inputPath="src/main/resources/data/chunk_topic.jsonl";
-        String outputPath="src/main/resources/data";
+        String inputPath="src/main/resources/data/datasets/Bistu/chunk_topic.jsonl";
+        String outputPath="src/main/resources/data/datasets/Bistu";
         clusterService.topicClusterV2(inputPath, outputPath);
     }
 

@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param sourceType   源实体类型
  * @param targetType   目标实体类型
  * @param description  关系的自然语言描述（即关系本身）
+ * @param keywords     源实体名和目标实体名泛化后的关键词，用"+"连接，用于检索匹配
  */
 @Schema(description = "关系信息")
 public record Relation(
@@ -35,6 +36,10 @@ public record Relation(
 
         @JsonProperty(value = "description", required = true)
         @Schema(description = "关系的自然语言描述，描述两个实体之间的关联", requiredMode = Schema.RequiredMode.REQUIRED)
-        String description
+        String description,
+
+        @JsonProperty(value = "keywords")
+        @Schema(description = "源实体名和目标实体名泛化后的关键词，用+连接")
+        String keywords
 ) {
 }
