@@ -34,7 +34,7 @@ public class TestSetTest {
     @Test
     public void test_TestSet() {
 
-        String inputPath = "src/main/resources/data/test_set.jsonl";
+        String inputPath = "src/main/resources/data/BISTU-OfficeQA.jsonl";
         String outputPath = "src/main/resources/data/result/testMultiAgent_test5.jsonl";
        // String outputPath = "src/main/resources/data/result/MultiAgentWorkflow_test9.jsonl";
         try {

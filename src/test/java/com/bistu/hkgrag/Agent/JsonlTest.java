@@ -18,7 +18,7 @@ public class JsonlTest {
             ObjectMapper mapper = new ObjectMapper();
 
             String inputPath = "src/main/resources/data/qa_test_set.jsonl";
-            String outputPath = "src/main/resources/data/test_set.jsonl";
+            String outputPath = "src/main/resources/data/BISTU-OfficeQA.jsonl";
 
             String content = Files.readString(Paths.get(inputPath));
 
