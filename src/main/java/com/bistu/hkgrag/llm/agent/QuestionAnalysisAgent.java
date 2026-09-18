@@ -19,7 +19,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-
+/**
+ * 问题分析智能体
+ */
 @Service
 public class QuestionAnalysisAgent {
     private static Logger log = LoggerFactory.getLogger(QuestionAnalysisAgent.class);

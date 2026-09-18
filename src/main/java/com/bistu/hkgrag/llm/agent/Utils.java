@@ -39,7 +39,7 @@ public class Utils {
                     && g.answerResult().toolCalls() != null
                     && !g.answerResult().toolCalls().isEmpty()) {
 
-                for (IntentAgent.ToolCallTrace trace :
+                for (RetrievalAgent.ToolCallTrace trace :
                         g.answerResult().toolCalls()) {
 
                     sb.append("工具名称: ")
@@ -92,7 +92,7 @@ public class Utils {
      * 用于评估智能体查看检索依据
      * 仅取最后一轮工具调用的检索结果，避免多轮累积导致token超限
      */
-    public static String buildEvidence(IntentAgent.AnswerResult answerResult,EvidenceStore evidenceStore) {
+    public static String buildEvidence(RetrievalAgent.AnswerResult answerResult, EvidenceStore evidenceStore) {
 
         if (answerResult == null
                 || answerResult.toolCalls() == null
@@ -102,7 +102,7 @@ public class Utils {
         }
 
         // 仅取最后一个工具调用的结果
-        IntentAgent.ToolCallTrace trace = answerResult.toolCalls()
+        RetrievalAgent.ToolCallTrace trace = answerResult.toolCalls()
                 .get(answerResult.toolCalls().size() - 1);
 
         StringBuilder sb = new StringBuilder();

@@ -12,12 +12,12 @@ import java.util.List;
 public class MultiAgent {
     private final Logger log = LoggerFactory.getLogger(MultiAgent.class);
     private final QuestionAnalysisAgent questionAnalysisAgent;
-    private final IntentAgent intentAgent;
+    private final RetrievalAgent intentAgent;
     private final EvaluationAgent evaluationAgent;
     private static final int MAX_RETRY = 3;
 
     public MultiAgent(@Autowired QuestionAnalysisAgent questionAnalysisAgent,
-                      @Autowired IntentAgent intentAgent,
+                      @Autowired RetrievalAgent intentAgent,
                       @Autowired EvaluationAgent evaluationAgent) {
         this.questionAnalysisAgent = questionAnalysisAgent;
         this.intentAgent = intentAgent;
@@ -31,7 +31,7 @@ public class MultiAgent {
 
             QuestionAnalysisAgent.RetrievalPlanResponse retrievalPlan,
 
-            IntentAgent.AnswerResult answerResult,
+            RetrievalAgent.AnswerResult answerResult,
 
             EvaluationAgent.EvaluationResult evaluationResult
 
@@ -64,7 +64,7 @@ public class MultiAgent {
             /**
              * Step2：意图解析智能体（自主工具调用）
              */
-            IntentAgent.AnswerResult answerResult =
+            RetrievalAgent.AnswerResult answerResult =
                             intentAgent.generationAnswer(question,plan,conversationId);
 
             log.info("答案生成结果：{}", answerResult);

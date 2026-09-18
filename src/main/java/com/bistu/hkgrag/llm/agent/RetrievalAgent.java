@@ -29,10 +29,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * 检索决策智能体
+ */
 @Service
-public class IntentAgent {
-    private static Logger log = LoggerFactory.getLogger(IntentAgent.class);
+public class RetrievalAgent {
+    private static Logger log = LoggerFactory.getLogger(RetrievalAgent.class);
     private ChatClient chatClient;
     private final RetrievalTools retrievalTools;
     private final ToolCallAdvisor toolCallAdvisor;
@@ -67,7 +69,7 @@ public class IntentAgent {
 
 
 
-    public IntentAgent(
+    public RetrievalAgent(
             @Qualifier("qwen7bInsChatClient") @Autowired ChatClient chatClient,
             @Autowired RetrievalTools retrievalTools,
             @Autowired ToolCallAdvisor toolCallAdvisor,

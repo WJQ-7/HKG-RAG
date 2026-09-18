@@ -9,9 +9,9 @@ import org.springframework.stereotype.Service;
 public class TestAgent {
 
     private final Logger log = LoggerFactory.getLogger(TestAgent.class);
-    private final IntentAgent intentAgent;
+    private final RetrievalAgent intentAgent;
 
-    public TestAgent(@Autowired IntentAgent intentAgent) {
+    public TestAgent(@Autowired RetrievalAgent intentAgent) {
         this.intentAgent = intentAgent;
     }
 
@@ -30,7 +30,7 @@ public class TestAgent {
         String conversationId = java.util.UUID.randomUUID().toString();
         log.info("消融实验：阉割版IntentAgent，问题[{}]，会话[{}]", question, conversationId);
 
-        IntentAgent.AnswerResult result =
+        RetrievalAgent.AnswerResult result =
                 intentAgent.generationAnswerAutonomous(question, conversationId);
         return result.finalAnswer();
     }

@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 
 
 
-
+/**
+ * 答案评估智能体
+ */
 @Service
 public class EvaluationAgent {
     private static Logger log = LoggerFactory.getLogger(EvaluationAgent.class);
@@ -85,7 +87,7 @@ public class EvaluationAgent {
      * @param answerResult 意图解析智能体的返回结果
      * @return
      */
-    public EvaluationResult evaluate(String question, QuestionAnalysisAgent.RetrievalPlanResponse plan, IntentAgent.AnswerResult answerResult) {
+    public EvaluationResult evaluate(String question, QuestionAnalysisAgent.RetrievalPlanResponse plan, RetrievalAgent.AnswerResult answerResult) {
         String evidence=Utils.buildEvidence(answerResult,evidenceStore);
         String AnswerEvaluate_Prompt=String.format(promptConfig.agentEvaluation(),question,plan.toString(),answerResult.finalAnswer(),evidence);
         ChatOptions options = OpenAiChatOptions.builder()
