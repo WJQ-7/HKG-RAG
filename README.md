@@ -1,4 +1,4 @@
-````markdown
+
 # HKG-RAG
 
 **HKG-RAG** (Hierarchical Knowledge Graph with Retrieval-Augmented Generation) is a retrieval-augmented question-answering framework designed for private-domain documents, integrating **hierarchical knowledge graphs, multi-granularity retrieval, and multi-agent collaboration**.
