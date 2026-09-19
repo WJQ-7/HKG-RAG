@@ -287,8 +287,8 @@ public class GenClusterService {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
             // 写入输出文件
-            TextUtils.writeJsonlAppend(outputPath + "/all_entities_test2.jsonl", new ArrayList<>(clusterEntitiesQueue));
-            TextUtils.writeJsonlAppend(outputPath + "/all_relations_test2.jsonl", new ArrayList<>(clusterRelationsQueue));
+            TextUtils.writeJsonlAppend(outputPath + "/all_entities.jsonl", new ArrayList<>(clusterEntitiesQueue));
+            TextUtils.writeJsonlAppend(outputPath + "/all_relations.jsonl", new ArrayList<>(clusterRelationsQueue));
 
             executor.shutdown();
             log.info("主题聚类 V2 成功（使用新 Entity/Relation 模型），生成聚类节点: {}, 聚类关系: {}",

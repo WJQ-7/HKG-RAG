@@ -1,32 +1,347 @@
-### 📌层次知识图谱RAG
-构建一个面向私域文档的智能问答系统，通过融合层次化知识图谱（Hierarchical Knowledge Graph）+ 向量检索 + 大语言模型（LLM），解决传统 RAG（Retrieval-Augmented Generation）在以下方面的不足：
-1.领域知识覆盖不全
-2.用户意图理解不足
-3.复杂问题推理能力弱
+# HKG-RAG
 
-### 🧠核心思路：
-- 1.文档预处理：  
-  原始文档--->提取MarkDown（500篇文档）--->文档分块(目前按token=1024+128重叠,1073个分块)  
-- 2.构建向量库+知识图谱  
-  - 向量库：Entity+File表  
-  - HKG：总体上是三层的层次结构   
-    - 底层：文档内容实体（地点、人物、事件等） 中间层：文档实体 顶层：根据文档主题进行聚类的聚类实体  
-  - 构建思路：（1）使用大模型对文档内容及文档本身抽取出文档内容实体和文档实体  
-           （2）使用大模型总结简短的文档主题，对文档主题进行向量化然后进行相似度聚类，设置相似度超参数并允许存在单文档一类的情况，构建出聚类节点  
-           （3）使用大模型抽取出单个文档中文档内容实体之间的关系与内容实体与文档主题之间的关系，手动添加聚类节点与文档之间的关系（不使用模型抽取）  
-  👉聚类流程和方法等待优化  
-- 3.多智能体与检索流程  
-  - 多智能体介绍：  
-  （1）问题分析智能体：进行主题预识别返回结果、对用户问题进行主题识别、问题拆分成子问题、根据子问题和子答案进行初始答案的生成  
-  （2）意图解析智能体：模型根据子问题进行意图解析（子问题涉及的关键实体列表、问题涉及的度维度约束列表）、模型根据检索结果回答问题  
-  （3）答案评估智能体：答案评估智能体对用户问题与生成得初始答案进行评估（提供原始问题、初始答案、初始答案产生的依据）  
-  👉上述智能体调用功能已经完成，提示词可继续优化  
-  
-  - 智能体及检索流程： 
-      - 第一轮,用户原始问题与文档内容进行向量匹配交给问题分析智能体生成初始答案--->答案评估智能体进行判断是否成功，若成功则结束当前问题，若失败生成判断依据（建议）进入第二轮  
-      - 第二轮：使用问题分析智能体进行分析得到子问题列表--->意图解析智能体根据子问题进行意图解析--->获取关键词在向量数据库entity表中混合检索+知识图谱检索召回问题--->重排序模型对子问题和召回文档进行重排序取topK--->意图解析智能体回答子问题答案。子问题循环结束将步骤列表交给问题分析智能体生成初始答案--->答案评估智能体  
-  - ❓目前问题：（1）答案评估智能体判断错误，文档中没有详细描述,当前回答已经是最优但判断为失败  
-             （2）问题分析智能体对子问题的分析不准确导致后续召回的文档并不包含黄金文档  
-            
-  - 👉待做：（1）构建多跳测试集、人工审查数据集  
-          （2）优化智能体流程，考虑加入文档主题识别流程  
+**HKG-RAG**（Hierarchical Knowledge Graph with Retrieval-Augmented Generation）是一个面向私域文档的检索增强问答框架，融合**层次知识图谱、多粒度检索与多智能体协同机制**。
+
+HKG-RAG 将文档组织为**实体层—文档层—主题聚类层**的层次知识结构，并根据不同类型问题动态选择文档块检索、实体检索、三元组检索和主题检索，以提升复杂问答中的知识覆盖与多跳推理能力。
+
+## Framework
+
+HKG-RAG 的整体框架如下图所示：
+
+![HKG-RAG Framework](figures/hkg_rag_framework.png)
+
+## 技术栈
+
+| 类别 | 技术 |
+|---|---|
+| 开发语言 | Java 17 |
+| 后端框架 | Spring Boot 3.5.5、Spring AI 1.1.7 |
+| 向量数据库 | Milvus 2.6.8 |
+| 图数据库 | Neo4j |
+| 大语言模型 | Qwen2.5-14B-Instruct |
+| Embedding 模型 | Qwen3-Embedding-4B |
+| 模型推理服务 | vLLM |
+
+## 环境要求
+
+- **JDK 17+**
+- **Maven 3.6+**
+- **Milvus 2.6+**
+- **Neo4j 5.x**
+- **LLM 服务**：Qwen2.5-14B-Instruct
+- **Embedding 服务**：Qwen3-Embedding-4B
+
+## 快速开始
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/WJQ-7/HKG-RAG.git
+cd HKG-RAG
+```
+
+### 2. 配置
+
+修改 `src/main/resources/application.properties`，根据实际部署环境配置模型服务、数据库及相关参数。
+
+```properties
+# Server
+server.port=8080
+
+# Prompt language: zh | en
+HKG-RAG.prompt.lang=en
+
+
+# Milvus
+# 向量数据库连接地址
+milvus.host=127.0.0.1
+milvus.port=19530
+
+
+# Neo4j
+# 用于存储层次知识图谱中的实体、文档、主题节点及其关系
+spring.neo4j.uri=bolt://localhost:7672
+spring.neo4j.authentication.username=neo4j
+spring.neo4j.authentication.password=<YOUR_PASSWORD>
+
+
+# Qwen LLM
+# HKG-RAG 主要使用的大语言模型服务
+HKG-RAG.llm.qwen.base-url=http://localhost:8001
+HKG-RAG.llm.qwen.api-key=<YOUR_API_KEY>
+HKG-RAG.llm.qwen.model=/path/to/qwen2.5-14b-instruct
+
+
+# DeepSeek LLM
+# 用于模型评估任务
+HKG-RAG.llm.deepseek.base-url=https://api.deepseek.com
+HKG-RAG.llm.deepseek.api-key=<YOUR_API_KEY>
+HKG-RAG.llm.deepseek.model=<MODEL_NAME>
+
+
+# Embedding
+# 用于文档、实体及主题的向量化表示
+HKG-RAG.embedding.base-url=http://localhost:8002
+HKG-RAG.embedding.api-key=<YOUR_API_KEY>
+HKG-RAG.embedding.model=/path/to/qwen3-embedding-4b
+
+
+# Chunk
+# 文档分块大小及相邻分块重叠长度
+HKG-RAG.chunk.max-size=1024
+HKG-RAG.chunk.overlap-chunk-size=128
+
+
+# Retrieval
+# 检索权重及候选召回数量
+HKG-RAG.retrieval.EXACT-WEIGHT=0.5
+HKG-RAG.retrieval.BM25-WEIGHT=0.5
+HKG-RAG.retrieval.VECTOR_WEIGHT=0.5
+HKG-RAG.retrieval.TopK=5
+
+
+# Agent
+# 单次问答允许的最大工具调用轮数和 Token 预算
+HKG-RAG.agent.max-tool-rounds=6
+HKG-RAG.agent.max-total-tokens=24000
+
+
+# Milvus Collections
+# 配置实际使用的实体、文档和主题聚类 Collection 名称
+HKG-RAG.milvus.Entity-Collection=<ENTITY_COLLECTION_NAME>
+HKG-RAG.milvus.File-Collection=<FILE_COLLECTION_NAME>
+HKG-RAG.milvus.Cluster-Collection=<CLUSTER_COLLECTION_NAME>
+```
+
+
+
+### 3. 数据准备
+
+将原始文档放入：
+
+```
+src/main/resources/documents/
+```
+
+## 路径
+
+
+
+### 阶段 1：文档预处理
+HKG-RAG 提供两种文档提取方式。
+
+#### 方式一：使用 Python 脚本提取
+提供 Python 文档解析脚本: 
+```text
+src/main/resources/scripts/DocParser.py 
+```
+该脚本用于递归读取指定目录下的原始文档，并将文档内容统一转换为 JSON 格式。
+首先安装 Python 依赖： 
+```bash 
+pip install "markitdown[all]" 
+``` 
+如需解析旧版 `.doc` 文件，还需安装： 
+```bash 
+pip install textract 
+```
+ 运行方式： 
+ ```bash 
+ python src/main/resources/scripts/DocParser.py <输入文档目录> <输出JSON路径> 
+ ```
+
+
+#### 方式二：使用 Java 程序提取 
+```text
+src/test/java/com/bistu/hkgrag/WorkFlow/DocPreprocess.java
+├── @Order(1) docParser()    # 提取 documents/ 下所有文档
+└── @Order(2) fileChunk()    # 文档分块
+
+### 阶段 2：文档抽取
+
+
+```
+### 阶段 2：文档抽取
+```text
+src/test/java/com/bistu/hkgrag/WorkFlow/ExtractionServiceTest.java
+├── @Order(1) testExtractionService()   # LLM 抽取实体、属性及关系
+├── @Order(2) testFileTopicExtraction() # LLM 抽取文档主题
+└── @Order(3) test_topicCluster()       # 生成主题节点
+```
+
+
+
+### 阶段 3：数据库构建
+数据库构建包括 **Milvus 向量数据库构建** 和 **Neo4j 知识图谱构建** 两部分。
+
+相关代码位置：
+```text
+src/test/java/com/bistu/hkgrag/WorkFlow/DBServiceTest.java
+```
+#### 3.1 Milvus 向量数据库构建
+
+按照 `@Order` 顺序运行以下方法：
+| 步骤 | 内容                           |
+|---|------------------------------|
+| `@Order(1)` | `testMilvusInsertContentEntities()`| 向 Milvus **entity 表**插入内容实体  |
+| `@Order(2)` | `testMilvusInsertDocumentEntities()`| 向 Milvus **file 表**插入文档实体    |
+| `@Order(3)` | `testMilvusInsertClusterEntities()`| 向 Milvus **cluster 表**插入聚类实体 |
+| 后续步骤 | 向 Neo4j 插入实体节点与关系（构成 HKG）    |
+
+#### 3.2 Neo4j 知识图谱构建
+
+完成 Milvus 数据写入后，继续按照 `@Order` 顺序运行以下方法：
+| 步骤 | 方法 | 输入数据 | 功能 |
+|---|---|---|---|
+| `@Order(4)` | `test_insertEntities()` | 将实体节点写入 Neo4j |
+| `@Order(5)` | `test_createRelations()`| 在 Neo4j 中创建实体之间的关系 |
+
+### 阶段 4：评估
+
+#### 4.1 BISTU-OfficeQA 数据集评估
+
+相关代码位置：
+```text
+src/test/java/com/bistu/hkgrag/Evaluation/Evaluation.java
+```
+评估数据位于：
+
+```text
+src/main/resources/data/datasets/Bistu/qa.jsonl
+```
+
+运行 `runAllMethods()`，该方法会依次完成：
+
+| 步骤 | 内容 |
+|---|---|
+| Step 1 | 使用 NaiveRAG 和 HKG-RAG 对测试集问题生成答案 |
+| Step 2 | 保存各方法生成的 QA 结果 |
+| Step 3 | 计算 EM、F1、ROUGE-L 和 Recall 等指标 |
+| Step 4 | 生成各方法的评估结果及汇总对比文件 |
+
+也可以分步运行：
+
+| 方法 | 功能 |
+|---|---|
+| `testSet()` | 使用 HKG-RAG 对 BISTU-OfficeQA 测试集生成回答 |
+| `evaluation()` | 对已有 QA 结果计算自动评估指标 |
+| `testAssessService()` | 使用 LLM 对已有问答结果进行模型评估 |
+| `runAllMethods()` | 一键完成多种 RAG 方法的答案生成、指标评估和结果汇总 |
+
+#### 4.2 UltraDomain 数据集评估
+
+UltraDomain 数据集提供独立的完整运行流程，相关代码位置：
+
+```text
+src/test/java/com/bistu/hkgrag/WorkFlow/UltraDomainPipeline.java
+```
+
+当前支持以下四个子数据集：
+
+```text
+agriculture
+cs
+legal
+mix
+```
+
+`UltraDomainPipeline` 将数据处理、数据库构建和评估划分为三个阶段：
+
+| 阶段 | 方法 | 内容 |
+|---|---|---|
+| Stage 1 | `stage1_Extraction()` | 文档分块、Topic 提取、实体关系抽取及主题聚类 |
+| Stage 2 | `stage2_DatabaseBuild()` | 构建 Milvus 向量数据库和 Neo4j 知识图谱 |
+| Stage 3 | `stage3_Evaluation()` | 在 QA 数据集上运行不同 RAG 方法并生成评估结果 |
+
+各数据集均提供对应的分阶段运行入口，例如：
+
+```text
+stage1_Agriculture()
+stage2_Agriculture()
+stage3_Agriculture()
+
+stage1_CS()
+stage2_CS()
+stage3_CS()
+
+stage1_Legal()
+stage2_Legal()
+stage3_Legal()
+
+stage1_Mix()
+stage2_Mix()
+stage3_Mix()
+```
+
+其中，`stage3_Evaluation()` 当前运行以下方法：
+
+| 方法 | 内容 |
+|---|---|
+| `NaiveRAG` | 基于向量检索的基础 RAG |
+| `HKGRAG` | 完整 HKG-RAG |
+| `HKGRAG-without-MultiAgent` | 去除多智能体协同机制的 HKG-RAG |
+
+评估阶段读取各领域目录下的 `qa.jsonl`，生成对应方法的 QA 结果，并计算 EM、F1、ROUGE-L 和 Recall 等指标。
+
+此外，也可以直接运行完整流水线：
+
+```text
+fullPipeline_Agriculture()
+fullPipeline_CS()
+fullPipeline_Legal()
+fullPipeline_Mix()
+```
+
+`fullPipeline()` 会依次执行：
+
+```text
+数据抽取
+   ↓
+数据库构建
+   ↓
+问答评估
+```
+
+因此，在使用 UltraDomain 数据集时，无需再单独执行前述 BISTU-OfficeQA 的文档预处理、文档抽取和数据库构建流程。
+
+### 启动问答服务
+
+```bash
+mvn spring-boot:run
+```
+
+调用接口：
+
+```bash
+curl -X POST "http://localhost:8080/api/chat?message=你的问题&sessionId=1"
+```
+
+## 项目结构
+
+```text
+src/main/java/com/bistu/hkgrag/
+├── config/                  # AIConfig(模型客户端)、MilvusConfig、PromptConfig(中英双语提示词)、WebConfig
+├── dao/
+│   ├── milvus/              # Milvus 数据访问层（entity/file/cluster 三表混合检索）
+│   └── neo4j/               # Neo4j 数据访问层（HKG 实体节点与关系）
+├── llm/
+│   ├── agent/               # 多智能体：QuestionAnalysisAgent、IntentAgent、EvaluationAgent、
+│   │                        #   MultiAgent(编排)、RetrievalTools(检索工具)、EvidenceStore(证据缓存)
+│   ├── controller/          # ChatController（POST /api/chat）
+│   ├── evaluation/          # Evaluator、EvaluationUtils（EM/F1/RougeL/Recall）
+│   ├── service/             # ExtractionService(抽取)、GenClusterService(聚类)、
+│   │                        #   RerankService(重排)、BaseLineService(NaiveRAG)、GenTestSetService(测试集)
+│   └── model/               # 领域模型
+└── preprocess/
+    ├── parser/              # 文档解析（PDF/Word/Excel/Rar → Markdown）
+    └── clean/               # 文本清洗、分块（FileChunkService）
+```
+
+## 数据集
+
+项目相关数据位于 `src/main/resources/data/datasets/`：
+
+| 目录 | 说明 |
+|---|---|
+| **BISTU-OfficeQA** | 本文构建的中文私域问答数据集，包含原始文档及对应问答数据 |
+| **Bistu** | BISTU-OfficeQA 数据集上的实验数据及中间结果 |
+| **UltraDomain** | UltraDomain 公开基准数据集上的实验数据及中间结果 |

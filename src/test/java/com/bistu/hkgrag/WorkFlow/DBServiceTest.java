@@ -62,7 +62,7 @@ public class DBServiceTest {
     @Test
     @Order(1)
     public void testMilvusInsertContentEntities() {
-        String inputPath = "src/main/resources/data/all_entities_test1.jsonl";
+        String inputPath = "src/main/resources/data/all_entities.jsonl";
         int batchSize = 200;
         int embedBatchSize = 10;
 
@@ -247,7 +247,7 @@ public class DBServiceTest {
     @Test
     @Order(3)
     public void testMilvusInsertClusterEntities() {
-        String inputPath = "src/main/resources/data/all_entities_test1.jsonl";
+        String inputPath = "src/main/resources/data/all_relations.jsonl";
         int batchSize = 200;
         int embedBatchSize = 10;
 
@@ -375,7 +375,7 @@ public class DBServiceTest {
     @Test
     @Order(4)
     public void test_insertEntities() {
-        String inputPath = "src/main/resources/data/all_entities_test1.jsonl";
+        String inputPath = "src/main/resources/data/all_entities.jsonl";
 
         List<Entity> entities = TextUtils.readJsonl(inputPath, Entity.class);
         System.out.println("待插入实体总数: " + entities.size());
@@ -393,7 +393,7 @@ public class DBServiceTest {
     @Test
     @Order(5)
     public void test_createRelations() {
-        String inputPath = "src/main/resources/data/all_relations_test1.jsonl";
+        String inputPath = "src/main/resources/data/all_relations.jsonl";
 
         List<Relation> relations = TextUtils.readJsonl(inputPath, Relation.class);
         System.out.println("待插入关系总数: " + relations.size());
