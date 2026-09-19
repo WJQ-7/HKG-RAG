@@ -814,14 +814,14 @@ public class PromptConfig {
             【工具调用次数限制】（严格遵守，防止上下文溢出）
             - 最多进行 4 次工具调用，达到上限后必须直接回复纯文本，不调用任何工具。
             - 多跳问题：getEntityTriples 最多调用 3 次，searchFileByQuery 最多 1 次作为补充。
-            - 单跳问题：searchFileByQuery/searchFileByTopic/searchEntityByName 合计最多 2 次。
+            - 细节问题：searchFileByQuery/searchFileByTopic/searchEntityByName 合计最多 2 次。
             - 第 4 次调用后，无论结果如何都不再调用任何工具，直接回复文本。
             
             你必须优先使用工具。工具调用全部完成后，直接回复纯文本（如"检索完成"），禁止输出任何回答内容，禁止编造任何工具名。
             """;
 
     private static final String RetrievalPrompt_ZH = """
-            # 角色：你是一个"意图解析与工具调用智能体"。
+            # 角色：你是一个"检索决策与工具调用智能体"。
             
             # 任务：
                 1. 你需要根据"问题分析智能体"的结果去选择检索工具，将问题分析智能体的相关结果作为检索工具的参数。
@@ -839,7 +839,7 @@ public class PromptConfig {
             """;
 
     private static final String AutonomousRetrievalPrompt_ZH = """
-            # 角色：你是一个"意图解析与工具调用智能体"。
+            # 角色：你是一个"检索决策与工具调用智能体"。
 
             # 任务：
                 1. 根据用户问题，自主选择并调用合适的检索工具。
@@ -865,7 +865,7 @@ public class PromptConfig {
             - 关系选择与问题语义不匹配 → WRONG_RELATION_PATH
             - 扩展跳数不够 → INSUFFICIENT_EXPANSION
             
-            ### 2. 抽象类问题（使用 searchFileByTopic 工具）
+            ### 2. 全局抽象类问题（使用 searchFileByTopic 工具）
             - 主题不合适 → WRONG_TOPICS
             - 需要更精准表述 → NEED_QUESTION_REWRITE
             
@@ -1632,6 +1632,7 @@ public class PromptConfig {
             1. SPECIFIC_DETAIL:
                Retrieval strategy:
                - Directly use searchFileByQuery(query=original question) to retrieve document content most semantically similar to the question
+               - In addition,use searchEntityByName(names=entity-name list) to retrieve information of relevant entities
                - If document retrieval returns no results, try using topics for topic-based retrieval as a fallback
             
             2. MULTI_HOP:
@@ -1674,19 +1675,19 @@ public class PromptConfig {
             - Do not repeat queries by merely rewording or adding/removing meaningless words
             - Each tool call must introduce new informational value
             - When keyword retrieval yields no results, try topic-based retrieval using topics
-            - Multi-hop questions: Use getEntityTriples to obtain triples, extract neighbor entity names from triples, and call getEntityTriples again with neighbor names to continue expansion
+            - Multi_hop questions: Use getEntityTriples to obtain triples, extract neighbor entity names from triples, and call getEntityTriples again with neighbor names to continue expansion
             
             [Tool Call Limit] (strictly follow to prevent context overflow)
             - Maximum 4 tool calls in total. Once the limit is reached, respond with plain text ONLY — do NOT call any more tools.
-            - Multi-hop questions: getEntityTriples max 3 calls, searchFileByQuery max 1 call as supplement.
-            - Single-hop questions: searchFileByQuery/searchFileByTopic/searchEntityByName combined max 2 calls.
+            - Multi_hop questions: getEntityTriples max 3 calls, searchFileByQuery max 1 call as supplement.
+            - SPECIFIC_DETAIL questions: searchFileByQuery/searchFileByTopic/searchEntityByName combined max 2 calls.
             - After the 4th call, output plain text regardless of results — do NOT call any tools.
             
             You must prioritize using tools. When all tool calls are complete, output plain text only (e.g. "retrieval complete"). Do NOT output any answer content. Do NOT invent any tool names.
             """;
 
     private static final String RetrievalPrompt_EN = """
-            # Role: You are an "Intent Parsing and Tool Calling Agent".
+            # Role: You are an "Retrieval Decision and Tool Calling Agent".
             
             # Task:
                 1. Based on the "Question Analysis Agent" results, select retrieval tools and use the analysis results as tool parameters.
@@ -1704,7 +1705,7 @@ public class PromptConfig {
             """;
 
     private static final String AutonomousRetrievalPrompt_EN = """
-            # Role: You are an "Intent Parsing and Tool Calling Agent".
+            # Role: You are an "Retrieval Decision and Tool Calling Agent".
 
             # Task:
                 1. Based on the user's question, autonomously select and call appropriate retrieval tools.
@@ -1730,7 +1731,7 @@ public class PromptConfig {
             - Relation selection does not match question semantics → WRONG_RELATION_PATH
             - Insufficient expansion hops → INSUFFICIENT_EXPANSION
             
-            ### 2. Abstract Questions (using searchFileByTopic tool)
+            ### 2. GLOBAL_ABSTRACT Questions (using searchFileByTopic tool)
             - Inappropriate topics → WRONG_TOPICS
             - Need more precise expression → NEED_QUESTION_REWRITE
             

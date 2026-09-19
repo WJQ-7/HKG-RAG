@@ -23,7 +23,7 @@ public class DocPreprocess {
     }
 
     /**
-     * 从指定目录下提取所有文档
+     * Java从指定目录下提取所有文档
      */
     @Test
     @Order(1)
