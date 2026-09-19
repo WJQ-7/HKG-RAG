@@ -9,7 +9,7 @@ HKG-RAG organizes documents into a hierarchical knowledge structure consisting o
 
 The overall framework of HKG-RAG is shown below:
 
-![HKG-RAG Framework](figures/hkg_rag_framework.png)
+![HKG-RAG Framework](figures/HKG-RAG_framework.png)
 
 ## Technology Stack
 
