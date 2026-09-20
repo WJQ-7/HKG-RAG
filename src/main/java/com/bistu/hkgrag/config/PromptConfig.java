@@ -1679,7 +1679,7 @@ public class PromptConfig {
             
             [Tool Call Limit] (strictly follow to prevent context overflow)
             - Maximum 4 tool calls in total. Once the limit is reached, respond with plain text ONLY — do NOT call any more tools.
-            - Multi_hop questions: getEntityTriples max 3 calls, searchFileByQuery max 1 call as supplement.
+            - MULTI_HOP questions: getEntityTriples max 3 calls, searchFileByQuery max 1 call as supplement.
             - SPECIFIC_DETAIL questions: searchFileByQuery/searchFileByTopic/searchEntityByName combined max 2 calls.
             - After the 4th call, output plain text regardless of results — do NOT call any tools.
             
