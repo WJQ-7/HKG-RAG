@@ -1639,7 +1639,7 @@ public class PromptConfig {
                Available tool: getEntityTriples (returns entity attributes + up to 10 triples)
                Triple format: (Entity Name) -[Relation Type]-> (Neighbor Entity Name)
             
-               Multi-hop reasoning steps:
+               MULTI_HOP reasoning steps:
             
                Step 1 (Locate the starting entity):
                - Use getEntityTriples(names=keywords) to obtain entity attributes and associated triples
