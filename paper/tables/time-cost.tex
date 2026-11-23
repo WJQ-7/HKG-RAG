@@ -1,0 +1,97 @@
+\begin{table}[!htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+
+\resizebox{\linewidth}{!}{
+\begin{tabular}{llccccc}
+\toprule
+Dataset & Time Cost & NaiveRAG & GraphRAG & LightRAG & LeanRAG & HKG-RAG \\
+\midrule
+
+\multirow{2}{*}{Agriculture}
+& KG Construction
+& --
+& 32h26m06s
+& \textbf{24h39m03s}
+& 88h26m09s
+& \underline{30h34m48s} \\
+& Inference
+& 14m11s
+& 21h48m31s
+& \textbf{20m41s}
+& 55m01s
+& \underline{40m13s} \\
+\midrule
+
+\multirow{2}{*}{Legal}
+& KG Construction
+& --
+& \underline{148h23m19s}
+& \textbf{39h22m11s}
+& 183h57m27s
+& 172h26m55s \\
+& Inference
+& 1h11m57s
+& 71h38m21s
+& \textbf{1h26m55s}
+& \underline{2h59m08s}
+& 3h09m41s \\
+\midrule
+
+\multirow{2}{*}{CS}
+& KG Construction
+& --
+& \underline{32h05m25s}
+& 32h49m40s
+& 80h15m01s
+& \textbf{27h18m21s} \\
+& Inference
+& 13m21s
+& 9h46m07s
+& 47m44s
+& \textbf{32m41s}
+& \underline{36m49s} \\
+\midrule
+
+\multirow{2}{*}{Mix}
+& KG Construction
+& --
+& 96h57m21s
+& \textbf{23h01m41s}
+& 83h57m27s
+& \underline{34h37m27s} \\
+& Inference
+& 16m07s
+& 14h06m56s
+& \underline{55m57s}
+& 58m51s
+& \textbf{55m38s} \\
+\midrule
+
+\multirow{2}{*}{BISTU-OfficeQA}
+& KG Construction
+& --
+& 64h35m32s
+& 14h35m28s
+& \underline{15h58m32s}
+& \textbf{11h48m24s} \\
+& Inference
+& 11m26s
+& 49h09m37s
+& \underline{1h06m35s}
+& \textbf{39m48s}
+& 1h14m06s \\
+
+\bottomrule
+\end{tabular}
+}
+
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\footnotesize
+\textit{Note:} Bold and underlined values indicate the best and second-best results among graph-based RAG methods, respectively. NaiveRAG is excluded from the ranking.
+\end{minipage}
+
+\caption{Time cost comparison on different datasets.}
+\label{tab:time-cost-results}
+\end{table}

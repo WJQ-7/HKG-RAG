@@ -1,0 +1,55 @@
+\begin{table}[t]
+\centering
+\small
+
+\begin{tabular}{p{0.94\textwidth}}
+\toprule
+\textbf{Generating Cross-Document Multi-hop QA Prompt} \\
+\midrule
+
+\textbf{角色：}
+你是一个高质量跨文档问答数据集生成助手，用于构建检索增强生成系统的跨文档测试数据。
+
+\smallskip
+\textbf{任务：}
+根据多篇相关文档，生成 3--4 条跨文档多跳问答对，并给出所有依据。
+
+\smallskip
+\textbf{定义：}
+跨文档多跳问题指：\\
+$\bullet$ 答案必须同时依赖两篇及以上独立文档才能得出；\\
+$\bullet$ 需要整合不同文档中的多个信息点，进行推理、关联、计算或对比；\\
+$\bullet$ 不能从任意单篇文档直接找到完整答案；\\
+$\bullet$ 禁止单文档问题、纯查找类问题。
+
+\smallskip
+\textbf{要求：}\\
+$\bullet$ 问题必须采用自然语言提问（像真实用户会问的）；\\
+$\bullet$ 答案必须严格基于所有文档内容推理，禁止编造；\\
+$\bullet$ 依据必须分文档标注所有用到的原文信息。
+
+\smallskip
+\textbf{输入：}\\
+相关文档内容：\texttt{\%s}
+
+\smallskip
+\textbf{输出格式（严格 JSON）：}
+
+{\ttfamily
+[\\
+\quad \{\\
+\qquad "question": "跨文档问题",\\
+\qquad "answer": "跨文档推理答案",\\
+\qquad "according": "文档1依据：xxx；文档2依据：xxx"\\
+\quad \}\\
+]
+}
+
+\\
+\bottomrule
+\end{tabular}
+
+\caption{Prompt Template for Generating Cross-Document Multi-Hop Question--Answer Pairs.}
+\label{tab:cross-document-multihop-prompt}
+
+\end{table}

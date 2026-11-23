@@ -1,0 +1,63 @@
+\begin{table}[t]
+\centering
+\renewcommand{\arraystretch}{1.15}
+
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccccc}
+\toprule
+
+\multirow{2}{*}{Method}
+& \multirow{2}{*}{KG}
+& Hierarchical Knowledge
+& \multirow{2}{*}{Multi-Agent}
+& Adaptive
+& \multirow{2}{*}{Node Types} \\
+
+& & Organization
+& & Retrieval
+& \\
+
+\midrule
+
+GraphRAG
+& $\checkmark$
+& $\checkmark$
+& $\times$
+& $\times$
+& Entity \\
+
+LightRAG
+& $\checkmark$
+& $\times$
+& $\times$
+& $\times$
+& Entity \\
+
+HiRAG
+& $\checkmark$
+& $\checkmark$
+& $\times$
+& $\times$
+& Entity, Summary Entity \\
+
+LeanRAG
+& $\checkmark$
+& $\checkmark$
+& $\times$
+& $\times$
+& Entity, Summary Entity \\
+
+\textbf{HKG-RAG}
+& $\checkmark$
+& $\checkmark$
+& $\checkmark$
+& $\checkmark$
+& Entity, Document, Topic \\
+
+\bottomrule
+\end{tabular}
+}
+
+\caption{Comparison of HKG-RAG with representative graph-based RAG methods.}
+\label{tab:graph_rag_comparison}
+\end{table}

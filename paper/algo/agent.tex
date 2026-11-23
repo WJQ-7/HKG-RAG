@@ -1,0 +1,59 @@
+\begin{algorithm}[H]
+\caption{Adaptive Multi-Agent Question Answering}
+\label{algo:multi-agent-qa}
+\small
+\begin{algorithmic}[1]
+
+\Require User query $q$, retrieval tool set $\mathcal{T}$, maximum round $G_{\max}$
+\Ensure Final answer $a^{*}$
+
+\State
+$\mathcal{M}^{0}=\emptyset$
+
+\For{$g=1$ to $G_{\max}$}
+
+\State
+$\mathcal{O}_{QA}^{g}
+=
+(q_{\mathrm{type}}^{g},K_q^{g},T_q^{g})
+=
+\operatorname{Agent}_{\mathrm{QuestionAnalysis}}
+(q,\mathcal{M}^{g-1})$
+
+\State
+$\mathcal{O}_{RD}^{g}
+=
+(\mathcal{T}^{g},\mathcal{E}^{g},a^{g})
+=
+\operatorname{Agent}_{\mathrm{RetrievalDecision}}
+(q,\mathcal{O}_{QA}^{g},\mathcal{T})$
+
+\State
+$\mathcal{O}_{AE}^{g}
+=
+(y^{g},f^{g})
+=
+\operatorname{Agent}_{\mathrm{AnswerEvaluation}}
+(q,\mathcal{O}_{QA}^{g},a^{g},\mathcal{E}^{g})$
+
+\If{$y^{g}=\mathrm{PASS}$}
+    \State \Return $a^{g}$
+\EndIf
+
+\State
+$\mathcal{M}^{g}
+=
+\operatorname{UpdateMemory}
+\left(
+\mathcal{M}^{g-1},
+\mathcal{O}_{QA}^{g},
+\mathcal{O}_{RD}^{g},
+\mathcal{O}_{AE}^{g}
+\right)$
+
+\EndFor
+
+\State \Return $a^{G_{\max}}$
+
+\end{algorithmic}
+\end{algorithm}

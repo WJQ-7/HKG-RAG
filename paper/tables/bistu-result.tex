@@ -1,0 +1,45 @@
+\begin{table}[!htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccccc}
+\toprule
+Metric & NaiveRAG & GraphRAG & LightRAG & LeanRAG & HKG-RAG \\
+\midrule
+
+Comprehensiveness
+& 6.54$\pm$0.05
+& 4.15$\pm$0.07
+& 6.13$\pm$0.03
+& 4.60$\pm$0.05
+& \textbf{7.04$\pm$0.03} \\
+
+Empowerment
+& 5.60$\pm$0.08
+& 3.82$\pm$0.05
+& 5.94$\pm$0.11
+& 5.46$\pm$0.06
+& \textbf{6.87$\pm$0.05} \\
+
+Diversity
+& 3.10$\pm$0.10
+& 3.99$\pm$0.02
+& 3.81$\pm$0.10
+& 4.06$\pm$0.07
+& \textbf{6.48$\pm$0.04} \\
+
+Overall
+& 5.25$\pm$0.08
+& 3.90$\pm$0.07
+& 5.39$\pm$0.06
+& 4.65$\pm$0.09
+& \textbf{6.74$\pm$0.03} \\
+
+\bottomrule
+\end{tabular}
+}
+
+\caption{Results on the BISTU-OfficeQA dataset.}
+\label{tab:bistu-results}
+\end{table}

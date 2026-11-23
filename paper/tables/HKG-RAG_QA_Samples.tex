@@ -1,0 +1,115 @@
+\renewcommand{\arraystretch}{1.12}
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\setlength{\LTcapwidth}{\textwidth}
+
+\begin{longtable}{p{0.20\textwidth} p{0.75\textwidth}}
+
+\toprule
+\textbf{Stage} & \textbf{Example} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Stage} & \textbf{Example (Continued)} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\endlastfoot
+
+Question
+&
+What are the steps involved in extracting and handling honey, and why is it important to strain the honey after extraction?
+\\
+
+Question Analysis Agent
+&
+\textbf{Type:} SPECIFIC\_DETAIL. \par
+\textbf{Keywords:} honey extraction, honey handling, straining honey. \par
+\textbf{Topics:} beekeeping, honey processing, food preparation.
+\\
+
+Retrieval Decision Agent
+&
+\textbf{Tool Selection:} The agent selects \texttt{searchFileByQuery} and uses the original question as the retrieval query. \par
+\textbf{Retrieval:} Five relevant document chunks are retrieved from the vector database. \par
+\textbf{Initial Answer:} \par
+\textbf{Steps Involved in Extracting and Handling Honey} \par
+1. \textbf{Supers Preparation} \par
+\textbullet\ Remove the honey-filled supers from the hives. \par
+\textbullet\ Place them on a covered surface to avoid dripping honey on the ground.
+\\
+
+&
+2. \textbf{Frame Preparation} \par
+\textbullet\ \textbf{Uncapping:} Use an uncapping knife or a capping scratcher to remove the wax cappings from the honeycomb cells. This step ensures that the honey can flow out freely.
+\\
+
+&
+\textbullet\ \textbf{Uncapping Knife:} A serrated knife is effective for manually uncapping. Warming the knife can improve uncapping efficiency.
+\\
+
+&
+\textbullet\ \textbf{Capping Scratcher:} It is useful for removing wax cappings from areas that cannot be completely uncapped using the knife.
+\\
+
+&
+\textbullet\ Collect the wax cappings in a container with a strainer at the bottom to recover the residual honey.
+\\
+
+&
+3. \textbf{Extraction Using an Extractor} \par
+\textbullet\ Place the uncapped frames into an extractor. The extractor uses centrifugal force to remove honey from the frames. \par
+\textbullet\ \textbf{Tangential Extractors:} Spin the frames one side at a time, then reverse them to extract honey from the other side. \par
+\textbullet\ \textbf{Radial Extractors:} Extract honey from both sides of the frames simultaneously. \par
+\textbullet\ Ensure that the extractor is balanced and securely fastened to prevent movement during operation.
+\\
+
+&
+4. \textbf{Handling Honey Post-Extraction} \par
+\textbullet\ \textbf{Straining:} Pass the extracted honey through a coarse or medium mesh strainer to remove wax particles, propolis, and other debris. \par
+\textbullet\ \textbf{Settling:} Allow the honey to settle in a warm room for 24 hours or more. This allows impurities to rise to the surface, making them easier to skim off. \par
+\textbullet\ \textbf{Final Straining:} Optionally pass the honey through a finer mesh, such as 70-mesh nylon, to remove any remaining particles.
+\\
+
+&
+5. \textbf{Bottling Honey} \par
+\textbullet\ Transfer the strained honey into a bottling tank equipped with a honey gate. \par
+\textbullet\ Pour the honey into jars through the honey gate to control the flow and minimize dripping and spillage.
+\\
+
+&
+\textbf{Importance of Straining Honey After Extraction} \par
+Straining honey after extraction is crucial for several reasons:
+\\
+
+&
+1. \textbf{Quality Assurance:} Straining removes impurities such as wax particles, propolis, and debris, ensuring that the honey is clean and free of unwanted substances.
+\\
+
+&
+2. \textbf{Consistency and Appearance:} Proper straining removes visible particles and produces clearer, more visually appealing honey.
+\\
+
+&
+3. \textbf{Storage Readiness:} Clean honey is better suited for subsequent bottling and long-term storage. \par
+4. \textbf{Consumer Satisfaction:} Consumers expect high-quality honey that is free from visible impurities. \par
+By following these steps and prioritizing thorough straining, beekeepers can produce high-quality honey that meets market standards and consumer expectations.
+\\
+
+Answer Evaluation Agent
+&
+\textbf{Result:} PASS. \par
+\textbf{Reason:} The answer accurately and completely addresses the user's question by detailing the steps involved in extracting and handling honey and thoroughly explaining why straining is important, all supported by relevant evidence from retrieved documents. \par
+\textbf{Diagnosis:} null.
+\\
+
+\bottomrule
+
+\caption{An example of the question answering process of HKG-RAG.}
+\label{tab:qa-example}
+
+\end{longtable}

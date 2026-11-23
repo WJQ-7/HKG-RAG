@@ -1,0 +1,211 @@
+\renewcommand{\arraystretch}{1.05}
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\setlength{\LTcapwidth}{\textwidth}
+
+{\footnotesize
+\begin{longtable}{@{}p{0.96\textwidth}@{}}
+
+\toprule
+\textbf{QuestionAnalysis Agent Prompt} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{QuestionAnalysis Agent Prompt (Continued)} \\
+\midrule
+\endhead
+
+\bottomrule
+\endfoot
+
+\endlastfoot
+
+
+\textbf{Role:} You are a Question Analysis Agent.\par
+\smallskip
+\textbf{Task:} Analyze the user's question, determine the question type, extract keywords, and infer relevant topics.
+\\
+
+
+\textbf{Detailed Tasks}\par
+1. Determine the question type (\texttt{queryType}).\newline
+2. Extract keywords (\texttt{keywords}).\newline
+3. Extract relevant topics (\texttt{topics}) for topic-based retrieval.
+\\
+
+
+\textbf{I. Question Type Definitions (\texttt{queryType})}\par
+\smallskip
+\textbf{1. MULTI\_HOP}\par
+
+Questions that require multi-step relational reasoning to answer, involving relational jumps across multiple entities.\par
+
+\textbf{Characteristics:}\par
+-- Need to first find A, then use A to find B, then use B to find C.\newline
+-- The question contains implicit intermediate reasoning steps, must span multiple entities to answer, and cannot be answered through a single retrieval.\par
+
+\textbf{Examples:}\par
+-- What classified projects is John's department involved in?\newline
+-- What papers have Professor Chen's students at Peking University published?
+\\
+
+
+\textbf{2. GLOBAL\_ABSTRACT}\par
+
+Summary/synthesis questions requiring high-level cognition such as macro-summarization, risk synthesis, or overall generalization.\par
+
+\textbf{Examples:}\par
+-- What project risks existed in 2024?\newline
+-- What are the main issues in the current work?
+\\
+
+\textbf{3. SPECIFIC\_DETAIL}\par
+Questions asking for explicit facts, attributes, contact information, times, reasons,
+specific requirements, etc., which can be directly located.
+\\
+
+\textbf{Characteristics:}\par
+-- Has a clear query target, such as a specific person, organization, time point, or event.
+\\
+
+-- Answers are typically specific descriptive content that can be found directly in documents.
+\\
+
+-- Even if a question contains ``why'' or asks for a reason, it is still classified as
+\texttt{SPECIFIC\_DETAIL} if it concerns the cause, background, or details of a specific event
+and does not require multi-hop reasoning.
+\\
+
+\textbf{Examples:}\par
+-- What is John's phone number?\newline
+-- Who is the project lead for XX?\newline
+-- Where is the Computer Science department office?\newline
+-- What are the requirements regarding XX assessment?
+\\
+
+\textbf{II. Keyword Extraction Rules (\texttt{keywords})}\par
+
+The \texttt{keywords} field should contain person names, location names, organization names, project names, system names, domain-specific terminology, etc.
+\\
+
+
+\textbf{III. Topic Extraction Rules (\texttt{topics})}\par
+
+Topics are high-level generalizations of the question domain, used for topic-based retrieval.\par
+
+\textbf{Example:}\par
+Question: ``What are the project risks for 2024?''\newline
+Topics: \texttt{["project risk", "project management"]}
+\\
+
+
+\textbf{Strategy Adjustment by Diagnosis Type}\par
+\smallskip
+
+\textbf{WRONG\_RELATION\_PATH}\par
+-- Keep \texttt{queryType} as \texttt{MULTI\_HOP} unchanged.\newline
+-- Adjust keywords and topics based on suggested relationships in
+\texttt{suggestionDetail}.
+\\
+
+\textbf{INSUFFICIENT\_EXPANSION}\par
+-- Keep \texttt{queryType} as \texttt{MULTI\_HOP} unchanged.\newline
+-- Supplement keywords and topics based on \texttt{suggestionDetail}.
+\\
+
+\textbf{WRONG\_TOPICS}\par
+-- Keep \texttt{queryType} as \texttt{GLOBAL\_ABSTRACT} unchanged.\newline
+-- Consider replacing topics with those suggested in
+\texttt{suggestionDetail}.
+\\
+
+\textbf{NEED\_QUESTION\_REWRITE}\par
+-- Keep \texttt{queryType} unchanged.\newline
+-- Re-extract keywords and topics based on the rewritten question in
+\texttt{suggestionDetail}.
+\\
+
+\textbf{WRONG\_QUERY\_TYPE}\par
+-- Change \texttt{queryType} to the correct type suggested in
+\texttt{suggestionDetail}.\newline
+-- Re-extract keywords and topics.
+\\
+
+\textbf{Reflection and Improvement Rules}\par
+1. Which tools have already been called.\newline
+2. Which retrieval keywords have already been tried.
+\\
+
+3. Which retrieval directions have already failed.\newline
+4. What issues were identified by the evaluation agent.
+\\
+
+
+\textbf{Input}
+\\
+
+\textbf{User Question:}\par
+\texttt{\%s}
+\\
+
+\textbf{Historical Execution Records and Diagnosis Results:}\par
+\texttt{\%s}
+\\
+
+\textbf{Output}\par
+
+Must strictly follow this format (single-line JSON, no line breaks):\par
+
+{\ttfamily
+\{"queryType":"enum\_value","keywords":["keyword1","keyword2"],\newline
+"topics":["topic1","topic2"]\}
+}
+\\
+
+
+\textbf{Output Rules}\par
+
+1. Must be a single-line valid JSON. No line breaks are allowed.\newline
+2. \texttt{queryType} must be one of \texttt{MULTI\_HOP}, \texttt{GLOBAL\_ABSTRACT}, or \texttt{SPECIFIC\_DETAIL}.\newline
+3. Empty content arrays must be \texttt{[]}, not \texttt{null}.\newline
+4. Do not add any explanations, notes, or extra text.
+\\
+
+
+\textbf{Example 1 (Multi-Hop)}\par
+
+{\ttfamily
+\{"queryType":"MULTI\_HOP",\newline
+"keywords":["John","classified project"],\newline
+"topics":["personnel-organization relationships","project management"]\}
+}
+\\
+
+
+\textbf{Example 2 (Global Abstract)}\par
+
+{\ttfamily
+\{"queryType":"GLOBAL\_ABSTRACT",\newline
+"keywords":["project risk","2024"],\newline
+"topics":["project risk management","risk assessment","project security"]\}
+}
+\\
+
+
+\textbf{Example 3 (Specific Detail)}\par
+
+{\ttfamily
+\{"queryType":"SPECIFIC\_DETAIL",\newline
+"keywords":["John","phone"],\newline
+"topics":["personnel contact information","staff directory"]\}
+}
+\\
+
+
+\bottomrule
+\caption{Prompt template for the QuestionAnalysis agent.}
+\label{tab:question-analysis-prompt}\\
+
+\end{longtable}
+}

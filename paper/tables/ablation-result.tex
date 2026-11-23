@@ -1,0 +1,57 @@
+\begin{table}[!htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+
+\resizebox{\linewidth}{!}{
+\begin{tabular}{llcccc}
+\toprule
+Dataset & Variant & Comprehensiveness & Empowerment & Diversity & Overall \\
+\midrule
+
+\multirow{3}{*}{BISTU-OfficeQA}
+& HKG-RAG
+& \textbf{7.04$\pm$0.03}
+& \textbf{6.87$\pm$0.05}
+& \textbf{6.48$\pm$0.04}
+& \textbf{6.74$\pm$0.03} \\
+
+& w/o Multi-Agent
+& 6.19$\pm$0.04
+& 5.90$\pm$0.04
+& 5.36$\pm$0.03
+& 5.81$\pm$0.04 \\
+
+& w/o KG
+& 6.17$\pm$0.03
+& 5.88$\pm$0.05
+& 5.33$\pm$0.06
+& 5.78$\pm$0.05 \\
+
+\midrule
+
+\multirow{3}{*}{Mix}
+& HKG-RAG
+& \textbf{7.34$\pm$0.04}
+& \textbf{7.12$\pm$0.02}
+& \textbf{7.14$\pm$0.03}
+& \textbf{7.22$\pm$0.03} \\
+
+& w/o Multi-Agent
+& 6.98$\pm$0.07
+& 6.80$\pm$0.08
+& 6.82$\pm$0.09
+& 6.88$\pm$0.07 \\
+
+& w/o KG
+& 6.59$\pm$0.02
+& 6.50$\pm$0.05
+& 6.59$\pm$0.06
+& 6.54$\pm$0.03 \\
+
+\bottomrule
+\end{tabular}
+}
+
+\caption{Ablation study results on the BISTU-OfficeQA and Mix datasets.}
+\label{tab:ablation-results}
+\end{table}

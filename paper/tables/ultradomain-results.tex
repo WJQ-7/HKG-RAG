@@ -1,0 +1,42 @@
+\begin{table}[!htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{llccccc}
+\toprule
+Dataset & Metric & NaiveRAG & GraphRAG & LightRAG & LeanRAG & \textbf{HKG-RAG} \\
+\midrule
+
+\multirow{4}{*}{Agriculture}
+& Comprehensiveness & 7.36$\pm$0.08 & 6.75$\pm$0.15 & 7.71$\pm$0.12 & 7.03$\pm$0.07 & \textbf{7.88$\pm$0.05} \\
+& Empowerment       & 6.96$\pm$0.04 & 6.45$\pm$0.08 & 7.42$\pm$0.06 & 6.89$\pm$0.12 & \textbf{7.76$\pm$0.11} \\
+& Diversity         & 6.22$\pm$0.13 & 6.96$\pm$0.02 & 6.84$\pm$0.07 & 7.01$\pm$0.13 & \textbf{7.38$\pm$0.06} \\
+& Overall           & 6.95$\pm$0.04 & 6.62$\pm$0.14 & 7.37$\pm$0.03 & 6.96$\pm$0.10 & \textbf{7.74$\pm$0.04} \\
+\midrule
+
+\multirow{4}{*}{Legal}
+& Comprehensiveness & 7.32$\pm$0.07 & 5.98$\pm$0.06 & 4.53$\pm$0.04 & 5.25$\pm$0.07 & \textbf{7.80$\pm$0.04} \\
+& Empowerment       & 6.40$\pm$0.04 & 5.29$\pm$0.04 & 4.32$\pm$0.03 & 5.54$\pm$0.04 & \textbf{7.34$\pm$0.04} \\
+& Diversity         & 4.64$\pm$0.05 & \textbf{6.41$\pm$0.06} & 3.53$\pm$0.06 & 5.07$\pm$0.09 & 6.26$\pm$0.11 \\
+& Overall           & 6.26$\pm$0.05 & 5.73$\pm$0.04 & 4.15$\pm$0.03 & 5.22$\pm$0.05 & \textbf{7.22$\pm$0.05} \\
+\midrule
+
+\multirow{4}{*}{CS}
+& Comprehensiveness & 7.45$\pm$0.11 & 5.07$\pm$0.13 & 7.80$\pm$0.11 & 6.40$\pm$0.07 & \textbf{7.89$\pm$0.06} \\
+& Empowerment       & 7.58$\pm$0.10 & 5.03$\pm$0.15 & 7.98$\pm$0.07 & 6.73$\pm$0.08 & \textbf{8.08$\pm$0.08} \\
+& Diversity         & 6.97$\pm$0.14 & 5.33$\pm$0.16 & 7.46$\pm$0.08 & 6.73$\pm$0.11 & \textbf{7.83$\pm$0.12} \\
+& Overall           & 7.35$\pm$0.12 & 4.99$\pm$0.12 & 7.74$\pm$0.10 & 6.55$\pm$0.10 & \textbf{7.92$\pm$0.08} \\
+\midrule
+
+\multirow{4}{*}{Mix}
+& Comprehensiveness & 6.28$\pm$0.08 & 4.90$\pm$0.07 & 6.71$\pm$0.06 & 6.28$\pm$0.07 & \textbf{7.34$\pm$0.04} \\
+& Empowerment       & 5.86$\pm$0.13 & 4.40$\pm$0.06 & 6.36$\pm$0.11 & 6.07$\pm$0.08 & \textbf{7.12$\pm$0.02} \\
+& Diversity         & 4.75$\pm$0.13 & 4.42$\pm$0.06 & 5.41$\pm$0.15 & 5.75$\pm$0.13 & \textbf{7.14$\pm$0.03} \\
+& Overall           & 5.70$\pm$0.09 & 4.51$\pm$0.05 & 6.23$\pm$0.07 & 6.04$\pm$0.09 & \textbf{7.22$\pm$0.03} \\
+
+\bottomrule
+\end{tabular}
+}
+\caption{Performance comparison of different RAG methods on the UltraDomain benchmark.}
+\label{tab:ultradomain-results}
+\end{table}

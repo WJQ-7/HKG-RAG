@@ -1,0 +1,62 @@
+\begin{table}[!htbp]
+\centering
+\footnotesize
+
+\begin{tabular}{p{0.94\textwidth}}
+\toprule
+\textbf{QA Pair Samples in JSONL Format} \\
+\midrule
+
+\begin{minipage}[t]{0.92\textwidth}
+\raggedright
+\sloppy
+
+\ttfamily
+\{"fileId": "4b2af118-6602-44ce-bf16-dddcebc10c55",
+"type": "SINGLE\_HOP",
+"question": "\normalfont 8月26日上午10:20--12:20大英（2）考试的新地点是什么？\ttfamily",
+"answer": "\normalfont 1-三阶\ttfamily",
+"according": "\normalfont 8月26日上午10:20--12:20的大英（2）考试地点由3-五阶变更为1-三阶。\ttfamily"\}
+\par
+
+\medskip
+
+\{"fileId": "816fa9bb-3ad8-402f-9d6f-e2c02c798d05",
+"type": "SAME\_DOC\_Multi\_HOP",
+"question": "\normalfont 为什么勤信文化大讲堂第50讲报告会被取消了？它原本计划什么时候举行？\ttfamily",
+"answer": "\normalfont 勤信文化大讲堂第50讲报告会因为时间安排问题被取消了，而这个报告会原本计划在10月12日下午2点举行。\ttfamily",
+"according": "\normalfont 因时间安排问题，原定于明天（10月12日）下午2:00开始举行的勤信文化大讲堂第50讲报告会取消，特此通知，并请周知。\ttfamily"\}
+\par
+
+\medskip
+
+\{"fileId": "d18fa735-b5e6-455b-8b5f-2465afecfa3f,\allowbreak
+f58cacbb-b541-4613-8099-208e28e1442d",
+"type": "CROSS\_DOC\_Multi\_HOP",
+"question": "\normalfont 艾克拉木江·阿布都克力木和陆展杰谁的高考分数更高？\ttfamily",
+"answer": "\normalfont 艾克拉木江·阿布都克力木的高考分数比陆展杰高。\ttfamily",
+"according": "\normalfont 文档1依据：陆展杰的高考分数为341分；文档2依据：艾克拉木江·阿布都克力木的高考分数为414分。\ttfamily"\}
+\par
+
+\medskip
+
+\{"fileId": "4afe68cb-5da8-47be-b008-ced03c695493,\allowbreak
+2fe52516-4bd6-4c7e-b29b-f2e98558e8c0,\allowbreak
+bb41dac1-b8cb-4606-bc05-add738368283",
+"type": "SUMMARY\_LEVEL",
+"question": "\normalfont 北京信息科技大学在2013至2016年期间期末考试中出现的主要作弊类型有哪些？\ttfamily",
+"answer": "\normalfont 主要作弊类型包括夹带纸质材料、携带并使用手机、找人替考以及协同作弊。\ttfamily",
+"according": "\normalfont 多篇文档中提到夹带、使用手机、替考和协同作弊等行为。\ttfamily"\}
+
+\normalfont
+
+\end{minipage}
+
+\\
+\bottomrule
+\end{tabular}
+
+\caption{Examples from the BISTU-OfficeQA Dataset.}
+\label{tab:dataset-examples}
+
+\end{table}

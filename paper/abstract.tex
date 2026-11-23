@@ -1,0 +1,30 @@
+\documentclass{elsarticle}
+
+\usepackage{url}
+\usepackage{xpatch}
+
+\makeatletter
+
+\xpatchcmd{\pprintMaketitle}
+  {\hrule\vskip12pt
+   \ifvoid\absbox\else\unvbox\absbox\par\vskip10pt\fi
+   \ifvoid\keybox\else\unvbox\keybox\par\vskip10pt\fi
+   \hrule\vskip12pt}
+  {\ifvoid\absbox\else\unvbox\absbox\par\vskip10pt\fi
+   \ifvoid\keybox\else\unvbox\keybox\par\vskip10pt\fi}
+  {}{}
+
+\makeatother
+
+\begin{document}
+
+\begin{frontmatter}
+
+\begin{abstract}
+Naive retrieval-augmented generation (RAG) built upon vector retrieval still suffers from limitations when processing queries demanding complex multi-hop reasoning or global comprehension of the knowledge base. To address these limitations, existing studies have incorporated knowledge graphs into RAG and further explored hierarchical knowledge organization, for instance via multi-level summaries. However, existing methods still face two major limitations. First, their retrieval strategies are relatively rigid, and the retrieval process lacks sufficient awareness of graph structure, making it difficult to fully exploit hierarchical knowledge organization during retrieval. Second, they exhibit limited capability for reasoning over multi-granularity knowledge and lack differentiated retrieval and reasoning strategies for queries of varying granularity. To address these challenges, we propose HKG-RAG, an adaptive RAG framework that integrates hierarchical knowledge graphs with multi-agent collaboration. HKG-RAG constructs a hierarchical knowledge graph through document information extraction, entity--relation modeling, and document topic clustering. It further introduces a collaborative question-answering workflow consisting of a QuestionAnalysis agent, a RetrievalDecision agent, and an AnswerEvaluation agent. Guided by query characteristics, the workflow performs multi-granularity knowledge retrieval by dynamically selecting among document-chunk retrieval, entity retrieval, entity--relation retrieval, and topic retrieval, and iteratively refines its retrieval strategy based on evaluation feedback. Experiments on public question-answering benchmark datasets spanning four domains and a self-constructed private-domain dataset demonstrate that HKG-RAG effectively improves question-answering quality. The source code and dataset are publicly available at GitHub:
+\url{https://github.com/WJQ-7/HKG-RAG}.
+\end{abstract}
+
+\end{frontmatter}
+
+\end{document}

@@ -1,0 +1,57 @@
+\begin{table}[!htbp]
+\centering
+\small
+
+\begin{tabular}{p{0.94\textwidth}}
+\toprule
+\textbf{Generating Single-Document Detail QA Prompt} \\
+\midrule
+
+\textbf{角色：}
+你是一个高质量问答数据集生成助手，用于构建检索增强生成系统的问答测试数据。
+
+\medskip
+\textbf{任务：}
+请根据给定文档名和文档内容生成 1--3 条单文档细节问答对，并给出文档中对应的依据。
+
+\medskip
+\textbf{定义：}
+单文档细节问题定义：
+
+$\bullet$ 只需要文档中的一个信息点即可回答；\\
+$\bullet$ 不需要推理、计算或多信息组合。
+
+\medskip
+\textbf{要求：}
+
+$\bullet$ 问题必须采用自然语言提问，并尽可能具体；\\
+$\bullet$ 答案必须可以在文档中直接找到；\\
+$\bullet$ 禁止编造文档中不存在的信息；\\
+$\bullet$ \texttt{according} 为问题答案对应的文档原文。
+
+\medskip
+\textbf{输入：}\\
+文档名：\texttt{\%s}\\
+文档内容：\texttt{\%s}
+
+\medskip
+\textbf{输出格式（严格 JSON）：}
+
+{\ttfamily
+[\\
+\quad \{\\
+\qquad "question": "你的问题",\\
+\qquad "answer": "答案",\\
+\qquad "according": "原文依据"\\
+\quad \}\\
+]
+}
+
+\\
+\bottomrule
+\end{tabular}
+
+\caption{Prompt Template for Generating Single-Document Detail Question--Answer Pairs.}
+\label{tab:single-detail-prompt}
+
+\end{table}

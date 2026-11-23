@@ -1,0 +1,77 @@
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\renewcommand{\arraystretch}{1.0}
+
+\begin{tabular}{p{0.94\textwidth}}
+\toprule
+\textbf{Generating Global-Abstract QA Pairs Prompt} \\
+\midrule
+
+\begin{minipage}[t]{0.92\textwidth}
+\setlength{\parskip}{0pt}
+
+根据以下数据集的描述：\\
+\texttt{\%s}
+
+\vspace{0.1em}
+请识别出 5 个会使用该数据集的潜在用户。对于每个用户，列出他们会用该数据集执行的 3 个任务。然后，针对每个（用户，任务）组合，生成 3 个需要对整个数据集有高层次理解才能回答的问题。
+
+\vspace{0.1em}
+\textbf{请按以下结构输出结果：}
+
+用户 1：[用户描述]\\
+\hspace*{1em}-- 任务 1：[任务描述]\\
+\hspace*{2em}-- 问题 1--3\\
+\hspace*{1em}-- 任务 2--3：[任务描述]\\
+$\cdots$\\
+用户 5：[用户描述]
+
+\vspace{0.1em}
+\textbf{严格要求：}
+
+1. \texttt{question} 必须自包含，不能出现“该”“其”“此”等指代词，必须写清具体对象。例如：“该岗位的试用期多长？”应写成：“XX 公司运维工程师岗位的试用期多长？”
+
+2. \texttt{answer} 和 \texttt{according} 需基于数据集实际内容生成，不能编造。
+
+3. 禁止询问可直接从文档中获得答案的具体问题，例如具体时间、人数、金额等。
+
+\vspace{0.1em}
+\textbf{输出：}
+
+\ttfamily
+\{\par
+\hspace*{1em}"users": [\par
+\hspace*{2em}\{\par
+\hspace*{3em}"description": "\normalfont 用户描述\ttfamily",\par
+\hspace*{3em}"tasks": [\par
+\hspace*{4em}\{\par
+\hspace*{5em}"fileId": "",\par
+\hspace*{5em}"description": "\normalfont 任务描述\ttfamily",\par
+\hspace*{5em}"questions": [\par
+\hspace*{6em}\{\par
+\hspace*{7em}"question": "\normalfont 问题内容\ttfamily",\par
+\hspace*{7em}"answer": "\normalfont 参考答案\ttfamily",\par
+\hspace*{7em}"according": "\normalfont 回答依据\ttfamily"\par
+\hspace*{6em}\},\par
+\hspace*{6em}\ldots\par
+\hspace*{5em}]\par
+\hspace*{4em}\},\par
+\hspace*{4em}\ldots\par
+\hspace*{3em}]\par
+\hspace*{2em}\},\par
+\hspace*{2em}\ldots\par
+\hspace*{1em}]\par
+\}\par
+\normalfont
+
+\end{minipage}
+
+\\
+\bottomrule
+\end{tabular}
+
+\caption{Prompt Template for Generating Global-Abstract Question--Answer Pairs.}
+\label{tab:global-abstract-prompt}
+
+\end{table}
